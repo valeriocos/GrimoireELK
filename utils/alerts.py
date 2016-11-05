@@ -105,7 +105,9 @@ class AlertFromBuckets(Alert):
                 if agg['key'] == r:
                     val = agg['doc_count']/total*100
                     if val >= ranges[r]:
-                        print("ALERT %s: %i > %i for %s " % (self.__class__.__name__, val, ranges[r], r))
+                        print("ALERT %s: %i > %i for %s (%s/%s, %s->%s)" %
+                              (self.__class__.__name__, val, ranges[r], r,
+                               self.es_url, self.es_index, self.start, self.end))
 
 class ElasticQuery():
     """ Helper class for building Elastic queries """

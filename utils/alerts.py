@@ -32,7 +32,7 @@ class Alert():
     def get_metrics_data(self):
         """ Get the metrics data from ES """
         # curl -XPOST "http://localhost:9200/maniphestMng/_search" -d'
-        r = requests.post(ES_URL, self.QUERY)
+        r = requests.post(ES_URL, self.get_metrics_query())
         return r.json()
 
     def get_metrics(self):
@@ -43,47 +43,14 @@ class Alert():
         """ Check that metrics are in the ranges """
         raise NotImplementedError
 
+    def get_metrics_query(self, query, start=None, end=None):
+        """ Return the query to get the metrics """
+        raise NotImplementedError
 
-class PeterAndTheWolf(Alert):
+
+class AlertFromBuckets(Alert):
+
     AGGREGATION_ID = "1"
-
-    QUERY = """
-        {
-          "size": 0,
-          "aggs": {
-            "%s": {
-              "terms": {
-                "field": "priority",
-                "size": 10,
-                "order": {
-                  "_count": "desc"
-                }
-              }
-            }
-          },
-          "query": {
-            "bool": {
-              "must": [
-                {
-                  "query_string": {
-                    "analyze_wildcard": true,
-                    "query": "*"
-                  }
-                },
-                {
-                  "range": {
-                    "metadata__updated_on": {
-                      "gte": 1446609354540,
-                      "lte": 1478231754540,
-                      "format": "epoch_millis"
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        }
-    """ % (AGGREGATION_ID)
 
     def get_metrics(self):
         """ Get the metrics """
@@ -97,10 +64,20 @@ class PeterAndTheWolf(Alert):
 
         return buckets
 
-    def check_metrics(self):
+    def check_metrics_ranges(self, ranges, percent=True):
         """
-        Unbreak Now! should be always under 10%
-        High tasks should be always under 25%
+        Check that metrics in buckets are in the ranges defined in the dict.
+
+        Sample dict with ranges:
+
+        ranges = {
+            'Unbreak Now!': 10,
+            'High': 25
+        }
+
+        Unbreak Now! and High are the name of the aggregations.
+
+        If percent, the ranges are in 0-100 range.
         """
         ranges = {
             'Unbreak Now!': 10,
@@ -120,6 +97,66 @@ class PeterAndTheWolf(Alert):
                         print("ALERT %s: %i > %i for %s " % (self.__class__.__name__, val, ranges[r], r))
 
 
+
+class PeterAndTheWolf(AlertFromBuckets):
+
+    def get_metrics_query(self, start=None, end=None):
+        # start and end not supported yet
+        query = """
+            {
+              "size": 0,
+              "aggs": {
+                "%s": {
+                  "terms": {
+                    "field": "priority",
+                    "size": 10,
+                    "order": {
+                      "_count": "desc"
+                    }
+                  }
+                }
+              },
+              "query": {
+                "bool": {
+                  "must": [
+                    {
+                      "query_string": {
+                        "analyze_wildcard": true,
+                        "query": "*"
+                      }
+                    },
+                    {
+                      "range": {
+                        "metadata__updated_on": {
+                          "gte": 1446609354540,
+                          "lte": 1478231754540,
+                          "format": "epoch_millis"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+        """ % (AlertFromBuckets.AGGREGATION_ID)
+
+        return query
+
+    def check(self, start=None, end=None):
+        """
+        Unbreak Now! should be always under 10%
+        High tasks should be always under 25%
+
+        :start Datetime from which start checking the metric
+        :end   Datetime from which start checking the metric
+        """
+        ranges = {
+            'Unbreak Now!': 10,
+            'High': 25
+        }
+        self.check_metrics_ranges(ranges)
+
+
 if __name__ == '__main__':
     peter = PeterAndTheWolf()
-    peter.check_metrics()
+    peter.check()

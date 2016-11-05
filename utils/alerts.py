@@ -25,14 +25,27 @@
 
 import requests
 
-ES_URL = 'http://localhost:9200/maniphestMng/_search'
+from dateutil import parser
+
+ES_URL = 'http://localhost:9200'
+ES_INDEX='maniphestMng'
+START = parser.parse('1900-01-01')
+END = parser.parse('2100-01-01')
 
 class Alert():
+
+    def __init__(self, es_url=ES_URL, es_index=ES_INDEX, start=START, end=END):
+        self.start = start
+        self.end = end
+        self.es_url = es_url
+        self.es_index = es_index
 
     def get_metrics_data(self):
         """ Get the metrics data from ES """
         # curl -XPOST "http://localhost:9200/maniphestMng/_search" -d'
-        r = requests.post(ES_URL, self.get_metrics_query())
+        url = self.es_url+'/'+self.es_index+'/_search'
+        r = requests.post(url, self.get_metrics_query())
+        r.raise_for_status()
         return r.json()
 
     def get_metrics(self):
@@ -43,23 +56,21 @@ class Alert():
         """ Check that metrics are in the ranges """
         raise NotImplementedError
 
-    def get_metrics_query(self, query, start=None, end=None):
+    def get_metrics_query(self, query):
         """ Return the query to get the metrics """
         raise NotImplementedError
 
 
 class AlertFromBuckets(Alert):
 
-    AGGREGATION_ID = "1"
-
     def get_metrics(self):
         """ Get the metrics """
         data = self.get_metrics_data()
 
-        buckets = data['aggregations'][self.AGGREGATION_ID]['buckets']
+        buckets = data['aggregations'][ElasticQuery.AGGREGATION_ID]['buckets']
 
         # Check all items are in the aggregations
-        if data['aggregations'][self.AGGREGATION_ID]['sum_other_doc_count'] > 0:
+        if data['aggregations'][ElasticQuery.AGGREGATION_ID]['sum_other_doc_count'] > 0:
             raise RuntimeError("Not all items in aggregations")
 
         return buckets
@@ -96,53 +107,98 @@ class AlertFromBuckets(Alert):
                     if val >= ranges[r]:
                         print("ALERT %s: %i > %i for %s " % (self.__class__.__name__, val, ranges[r], r))
 
+class ElasticQuery():
+    """ Helper class for building Elastic queries """
+
+    AGGREGATION_ID = "1"
+    AGG_SIZE = 100
+
+    @classmethod
+    def get_query_range(cls, start=None, end=None):
+        start_iso = None
+        end_iso = None
+
+        if start:
+            start_iso = '"gte": "%s"' % start.isoformat()
+        if end:
+            end_iso = '"lte": "%s"' % end.isoformat()
+
+        query_range = """
+        {
+          "range": {
+            "metadata__updated_on": {
+              %s,
+              %s
+            }
+          }
+        }
+        """ % (start_iso, end_iso)
+
+        return query_range
+
+    @classmethod
+    def get_query_all(cls, start=None, end=None):
+        query_range = cls.get_query_range(start, end)
+
+        query_all = """
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "query_string": {
+                    "analyze_wildcard": true,
+                    "query": "*"
+                  }
+                },
+                %s
+              ]
+            }
+          }
+        """ % (query_range)
+
+        return query_all
+
+    @classmethod
+    def get_query_agg(cls, field):
+        query_agg = """
+          "aggs": {
+            "%s": {
+              "terms": {
+                "field": "%s",
+                "size": %i,
+                "order": {
+                  "_count": "desc"
+                }
+              }
+            }
+          }
+        """ % (cls.AGGREGATION_ID, field, cls.AGG_SIZE)
+
+        return query_agg
+
+    @classmethod
+    def get_agg(cls, field, start = None, end = None):
+        query_all = cls.get_query_all(start, end)
+        query_agg = ElasticQuery.get_query_agg(field)
+
+        query = """
+            {
+              "size": 0,
+              %s,
+              %s
+              }
+        """ % (query_agg, query_all)
+
+        return query
+
 
 
 class PeterAndTheWolf(AlertFromBuckets):
 
-    def get_metrics_query(self, start=None, end=None):
-        # start and end not supported yet
-        query = """
-            {
-              "size": 0,
-              "aggs": {
-                "%s": {
-                  "terms": {
-                    "field": "priority",
-                    "size": 10,
-                    "order": {
-                      "_count": "desc"
-                    }
-                  }
-                }
-              },
-              "query": {
-                "bool": {
-                  "must": [
-                    {
-                      "query_string": {
-                        "analyze_wildcard": true,
-                        "query": "*"
-                      }
-                    },
-                    {
-                      "range": {
-                        "metadata__updated_on": {
-                          "gte": 1446609354540,
-                          "lte": 1478231754540,
-                          "format": "epoch_millis"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-        """ % (AlertFromBuckets.AGGREGATION_ID)
+    def get_metrics_query(self):
+        return ElasticQuery.get_agg("priority", self.start, self.end)
 
-        return query
-
-    def check(self, start=None, end=None):
+    def check(self):
         """
         Unbreak Now! should be always under 10%
         High tasks should be always under 25%

@@ -25,12 +25,113 @@
 
 import requests
 
+from datetime import datetime, timedelta
+
 from dateutil import parser
 
 ES_URL = 'http://localhost:9200'
 ES_INDEX='maniphestMng'
 START = parser.parse('1900-01-01')
 END = parser.parse('2100-01-01')
+
+class ElasticQuery():
+    """ Helper class for building Elastic queries """
+
+    AGGREGATION_ID = "1"
+    AGG_SIZE = 100
+
+    @classmethod
+    def get_query_range(cls, start=None, end=None):
+        start_iso = None
+        end_iso = None
+
+        if start:
+            start_iso = '"gte": "%s"' % start.isoformat()
+        if end:
+            end_iso = '"lte": "%s"' % end.isoformat()
+
+        query_range = """
+        {
+          "range": {
+            "metadata__updated_on": {
+              %s,
+              %s
+            }
+          }
+        }
+        """ % (start_iso, end_iso)
+
+        return query_range
+
+    @classmethod
+    def get_query_all(cls, start=None, end=None):
+        query_range = cls.get_query_range(start, end)
+
+        query_all = """
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "query_string": {
+                    "analyze_wildcard": true,
+                    "query": "*"
+                  }
+                },
+                %s
+              ]
+            }
+          }
+        """ % (query_range)
+
+        return query_all
+
+    @classmethod
+    def get_query_agg(cls, field):
+        query_agg = """
+          "aggs": {
+            "%s": {
+              "terms": {
+                "field": "%s",
+                "size": %i,
+                "order": {
+                  "_count": "desc"
+                }
+              }
+            }
+          }
+        """ % (cls.AGGREGATION_ID, field, cls.AGG_SIZE)
+
+        return query_agg
+
+    @classmethod
+    def get_simple(cls, start = None, end = None):
+        query_all = cls.get_query_all(start, end)
+
+        query = """
+            {
+              "size": 0,
+              %s
+              }
+        """ % (query_all)
+
+        return query
+
+
+    @classmethod
+    def get_agg(cls, field, start = None, end = None):
+        query_all = cls.get_query_all(start, end)
+        query_agg = ElasticQuery.get_query_agg(field)
+
+        query = """
+            {
+              "size": 0,
+              %s,
+              %s
+              }
+        """ % (query_agg, query_all)
+
+        return query
+
 
 class Alert():
 
@@ -109,91 +210,6 @@ class AlertFromBuckets(Alert):
                               (self.__class__.__name__, val, ranges[r], r,
                                self.es_url, self.es_index, self.start, self.end))
 
-class ElasticQuery():
-    """ Helper class for building Elastic queries """
-
-    AGGREGATION_ID = "1"
-    AGG_SIZE = 100
-
-    @classmethod
-    def get_query_range(cls, start=None, end=None):
-        start_iso = None
-        end_iso = None
-
-        if start:
-            start_iso = '"gte": "%s"' % start.isoformat()
-        if end:
-            end_iso = '"lte": "%s"' % end.isoformat()
-
-        query_range = """
-        {
-          "range": {
-            "metadata__updated_on": {
-              %s,
-              %s
-            }
-          }
-        }
-        """ % (start_iso, end_iso)
-
-        return query_range
-
-    @classmethod
-    def get_query_all(cls, start=None, end=None):
-        query_range = cls.get_query_range(start, end)
-
-        query_all = """
-          "query": {
-            "bool": {
-              "must": [
-                {
-                  "query_string": {
-                    "analyze_wildcard": true,
-                    "query": "*"
-                  }
-                },
-                %s
-              ]
-            }
-          }
-        """ % (query_range)
-
-        return query_all
-
-    @classmethod
-    def get_query_agg(cls, field):
-        query_agg = """
-          "aggs": {
-            "%s": {
-              "terms": {
-                "field": "%s",
-                "size": %i,
-                "order": {
-                  "_count": "desc"
-                }
-              }
-            }
-          }
-        """ % (cls.AGGREGATION_ID, field, cls.AGG_SIZE)
-
-        return query_agg
-
-    @classmethod
-    def get_agg(cls, field, start = None, end = None):
-        query_all = cls.get_query_all(start, end)
-        query_agg = ElasticQuery.get_query_agg(field)
-
-        query = """
-            {
-              "size": 0,
-              %s,
-              %s
-              }
-        """ % (query_agg, query_all)
-
-        return query
-
-
 
 class PeterAndTheWolf(AlertFromBuckets):
 
@@ -214,7 +230,46 @@ class PeterAndTheWolf(AlertFromBuckets):
         }
         self.check_metrics_ranges(ranges)
 
+class Trends(Alert):
+
+    PERIODS = {'day':1, 'week':7, 'month':30, 'year':365}
+    DEFAULT_PERIOD = 'week'
+
+    def get_metrics_query(self):
+        return ElasticQuery.get_simple(self.start, self.end)
+
+    def check(self, period=DEFAULT_PERIOD, min_val=0, max_val=0):
+
+        if period not in Trends.PERIODS.keys():
+            raise RuntimeError('Period not supported: %s', period)
+
+        offset = Trends.PERIODS[period]
+        # Last interval metrics
+        self.end = datetime.now()
+        self.start = self.end - timedelta(days=offset)
+        val_last_period = self.get_metrics_data()['hits']['total']
+        # Previous interval metrics
+        self.end = self.start
+        self.start = self.end - timedelta(days=offset)
+        val_previous_period = self.get_metrics_data()['hits']['total']
+        trend = val_last_period - val_previous_period
+
+        if trend > max_val:
+            print("ALERT %s %s: %i > %i  (%s/%s)" %
+                  (self.__class__.__name__, period, trend, max_val,
+                   self.es_url, self.es_index))
+        elif trend < min_val:
+            print("ALERT %s %s: %i < %i (%s/%s)" %
+                  (self.__class__.__name__, period, trend, min_val,
+                   self.es_url, self.es_index))
+
 
 if __name__ == '__main__':
     peter = PeterAndTheWolf()
     peter.check()
+    trends = Trends()
+    # print(trends.get_metrics_data())
+    trends.check(min_val=0, max_val=37)
+    trends.check('day')
+    trends.check('month', max_val=300)
+    trends.check('year')

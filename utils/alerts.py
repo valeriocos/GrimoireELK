@@ -23,6 +23,7 @@
 #   Alvaro del Castillo San Felix <acs@bitergia.com>
 #
 
+import pytz
 import requests
 
 from datetime import datetime, timedelta
@@ -33,6 +34,10 @@ ES_URL = 'http://localhost:9200'
 ES_INDEX='maniphestMng'
 START = parser.parse('1900-01-01')
 END = parser.parse('2100-01-01')
+
+def get_now():
+    # Return now datetime with timezome
+    return datetime.utcnow().replace(tzinfo=pytz.utc)
 
 class ElasticQuery():
     """ Helper class for building Elastic queries """
@@ -86,7 +91,7 @@ class ElasticQuery():
         return query_all
 
     @classmethod
-    def get_query_agg(cls, field):
+    def get_query_agg_terms(cls, field):
         query_agg = """
           "aggs": {
             "%s": {
@@ -104,7 +109,22 @@ class ElasticQuery():
         return query_agg
 
     @classmethod
-    def get_simple(cls, start = None, end = None):
+    def get_query_agg_max(cls, field):
+        query_agg = """
+          "aggs": {
+            "%s": {
+              "max": {
+                "field": "%s"
+              }
+            }
+          }
+        """ % (cls.AGGREGATION_ID, field)
+
+        return query_agg
+
+
+    @classmethod
+    def get_count(cls, start = None, end = None):
         query_all = cls.get_query_all(start, end)
 
         query = """
@@ -118,9 +138,14 @@ class ElasticQuery():
 
 
     @classmethod
-    def get_agg(cls, field, start = None, end = None):
+    def get_agg_count(cls, field, start=None, end=None, agg_type="terms"):
         query_all = cls.get_query_all(start, end)
-        query_agg = ElasticQuery.get_query_agg(field)
+        if agg_type == "terms":
+            query_agg = ElasticQuery.get_query_agg_terms(field)
+        elif agg_type == "max":
+            query_agg = ElasticQuery.get_query_agg_max(field)
+        else:
+            RuntimeError("Aggregation of %s not supported", agg_type)
 
         query = """
             {
@@ -145,7 +170,8 @@ class Alert():
         """ Get the metrics data from ES """
         # curl -XPOST "http://localhost:9200/maniphestMng/_search" -d'
         url = self.es_url+'/'+self.es_index+'/_search'
-        r = requests.post(url, self.get_metrics_query())
+        query = self.get_metrics_query()
+        r = requests.post(url, query)
         r.raise_for_status()
         return r.json()
 
@@ -164,15 +190,19 @@ class Alert():
 
 class AlertFromBuckets(Alert):
 
-    def get_metrics(self):
+    def get_metrics(self, agg_type='terms'):
         """ Get the metrics """
         data = self.get_metrics_data()
 
-        buckets = data['aggregations'][ElasticQuery.AGGREGATION_ID]['buckets']
-
-        # Check all items are in the aggregations
-        if data['aggregations'][ElasticQuery.AGGREGATION_ID]['sum_other_doc_count'] > 0:
-            raise RuntimeError("Not all items in aggregations")
+        if agg_type == 'terms':
+            buckets = data['aggregations'][ElasticQuery.AGGREGATION_ID]['buckets']
+            # Check all items are in the aggregations
+            if data['aggregations'][ElasticQuery.AGGREGATION_ID]['sum_other_doc_count'] > 0:
+                raise RuntimeError("Not all items in aggregations")
+        elif agg_type == 'max':
+            buckets = data['aggregations'][ElasticQuery.AGGREGATION_ID]["value_as_string"]
+        else:
+            RuntimeError("Aggregation of %s not supported", agg_type)
 
         return buckets
 
@@ -214,7 +244,7 @@ class AlertFromBuckets(Alert):
 class PeterAndTheWolf(AlertFromBuckets):
 
     def get_metrics_query(self):
-        return ElasticQuery.get_agg("priority", self.start, self.end)
+        return ElasticQuery.get_agg_count("priority", self.start, self.end)
 
     def check(self):
         """
@@ -236,7 +266,7 @@ class Trends(Alert):
     DEFAULT_PERIOD = 'week'
 
     def get_metrics_query(self):
-        return ElasticQuery.get_simple(self.start, self.end)
+        return ElasticQuery.get_count(self.start, self.end)
 
     def check(self, period=DEFAULT_PERIOD, min_val=0, max_val=0):
 
@@ -245,7 +275,7 @@ class Trends(Alert):
 
         offset = Trends.PERIODS[period]
         # Last interval metrics
-        self.end = datetime.now()
+        self.end = get_now()
         self.start = self.end - timedelta(days=offset)
         val_last_period = self.get_metrics_data()['hits']['total']
         # Previous interval metrics
@@ -263,8 +293,26 @@ class Trends(Alert):
                   (self.__class__.__name__, period, trend, min_val,
                    self.es_url, self.es_index))
 
+class Freshness(AlertFromBuckets):
+
+    AGG_TYPE = 'max'
+
+    def get_metrics_query(self):
+        return ElasticQuery.get_agg_count("metadata__updated_on", self.start, self.end, Freshness.AGG_TYPE)
+
+    def check(self, max_days=0):
+        """ Check that the data was updated before "days" ago """
+        last_update = self.get_metrics(agg_type=Freshness.AGG_TYPE)
+        last_update = parser.parse(last_update)
+        freshness_days = (get_now() - last_update).days
+        if freshness_days > max_days:
+            print("ALERT %s: %id from last update > %id  (%s/%s)" %
+                  (self.__class__.__name__, freshness_days, max_days,
+                   self.es_url, self.es_index))
 
 if __name__ == '__main__':
+    fresshness = Freshness()
+    fresshness.check(1)
     peter = PeterAndTheWolf()
     peter.check()
     trends = Trends()

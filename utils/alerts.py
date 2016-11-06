@@ -187,6 +187,24 @@ class Alert():
         """ Return the query to get the metrics """
         raise NotImplementedError
 
+    def raise_alert(self, val, limit, field='', is_max=True, unit=''):
+        """ Raise the alert
+
+        :param val: value that raise the alert
+        :param limit: limit value for the alert
+        :param field: name of the field with the val
+        :param is_max: if the limix is max or min
+        :param unit: unit of the measure
+        """
+        if field != '':
+            field = "for " + field
+        op = "<"
+        if is_max:
+            op = ">"
+
+        print("ALERT %s: %i%s %s %i%s %s (%s/%s, %s->%s)" %
+              (self.__class__.__name__, val, unit, op, limit, unit, field,
+               self.es_url, self.es_index, self.start, self.end))
 
 class AlertFromBuckets(Alert):
 
@@ -221,10 +239,6 @@ class AlertFromBuckets(Alert):
 
         If percent, the ranges are in 0-100 range.
         """
-        ranges = {
-            'Unbreak Now!': 10,
-            'High': 25
-        }
         total = 0
         metrics = self.get_metrics()
         for agg in metrics :
@@ -235,11 +249,8 @@ class AlertFromBuckets(Alert):
             for r in ranges:
                 if agg['key'] == r:
                     val = agg['doc_count']/total*100
-                    if val >= ranges[r]:
-                        print("ALERT %s: %i > %i for %s (%s/%s, %s->%s)" %
-                              (self.__class__.__name__, val, ranges[r], r,
-                               self.es_url, self.es_index, self.start, self.end))
-
+                    if val > ranges[r]:
+                        self.raise_alert(val, ranges[r], r, unit='%')
 
 class PeterAndTheWolf(AlertFromBuckets):
 
@@ -293,13 +304,9 @@ class Trends(Alert):
             trend_percent = int((trend/val_last_period)*100)
 
         if trend_percent > max_val:
-            print("ALERT %s %s: %i%% > %i%%  (%s/%s)" %
-                  (self.__class__.__name__, period, trend_percent, max_val,
-                   self.es_url, self.es_index))
-        elif trend_percent < min_val:
-            print("ALERT %s %s: %i%% < %i%% (%s/%s)" %
-                  (self.__class__.__name__, period, trend_percent, min_val,
-                   self.es_url, self.es_index))
+            self.raise_alert(trend_percent, max_val, field=period, unit='%')
+        if trend_percent < min_val:
+            self.raise_alert(trend_percent, min_val, field=period, is_max=False, unit='%')
 
 class Freshness(AlertFromBuckets):
 
@@ -314,9 +321,7 @@ class Freshness(AlertFromBuckets):
         last_update = parser.parse(last_update)
         freshness_days = (get_now() - last_update).days
         if freshness_days > max_days:
-            print("ALERT %s: %id from last update > %id  (%s/%s)" %
-                  (self.__class__.__name__, freshness_days, max_days,
-                   self.es_url, self.es_index))
+            self.raise_alert(freshness_days, max_days, unit='d')
 
 if __name__ == '__main__':
     fresshness = Freshness()
@@ -324,8 +329,7 @@ if __name__ == '__main__':
     peter = PeterAndTheWolf()
     peter.check()
     trends = Trends()
-    # print(trends.get_metrics_data())
-    trends.check(max_val=10)
-    trends.check('day')
+    trends.check(min_val=22)
+    trends.check('day', min_val=5)
     trends.check('month', max_val=10)
     trends.check('year')

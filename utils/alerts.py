@@ -283,14 +283,22 @@ class Trends(Alert):
         self.start = self.end - timedelta(days=offset)
         val_previous_period = self.get_metrics_data()['hits']['total']
         trend = val_last_period - val_previous_period
+        trend_percent = None
+        if val_last_period == 0:
+            if val_previous_period > 0:
+                trend_percent = -100
+            else:
+                trend_percent = 0
+        else:
+            trend_percent = int((trend/val_last_period)*100)
 
-        if trend > max_val:
-            print("ALERT %s %s: %i > %i  (%s/%s)" %
-                  (self.__class__.__name__, period, trend, max_val,
+        if trend_percent > max_val:
+            print("ALERT %s %s: %i%% > %i%%  (%s/%s)" %
+                  (self.__class__.__name__, period, trend_percent, max_val,
                    self.es_url, self.es_index))
-        elif trend < min_val:
-            print("ALERT %s %s: %i < %i (%s/%s)" %
-                  (self.__class__.__name__, period, trend, min_val,
+        elif trend_percent < min_val:
+            print("ALERT %s %s: %i%% < %i%% (%s/%s)" %
+                  (self.__class__.__name__, period, trend_percent, min_val,
                    self.es_url, self.es_index))
 
 class Freshness(AlertFromBuckets):
@@ -317,7 +325,7 @@ if __name__ == '__main__':
     peter.check()
     trends = Trends()
     # print(trends.get_metrics_data())
-    trends.check(min_val=0, max_val=37)
+    trends.check(max_val=10)
     trends.check('day')
-    trends.check('month', max_val=300)
+    trends.check('month', max_val=10)
     trends.check('year')

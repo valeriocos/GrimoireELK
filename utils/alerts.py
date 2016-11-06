@@ -23,6 +23,9 @@
 #   Alvaro del Castillo San Felix <acs@bitergia.com>
 #
 
+import argparse
+import json
+
 import pytz
 import requests
 
@@ -30,8 +33,11 @@ from datetime import datetime, timedelta
 
 from dateutil import parser
 
+# Default values so it works without params
 ES_URL = 'http://localhost:9200'
 ES_INDEX='maniphestMng'
+ES_ALERTS_URL = ES_URL
+ES_ALERTS_INDEX = 'alerts'
 START = parser.parse('1900-01-01')
 END = parser.parse('2100-01-01')
 
@@ -160,11 +166,45 @@ class ElasticQuery():
 
 class Alert():
 
-    def __init__(self, es_url=ES_URL, es_index=ES_INDEX, start=START, end=END):
+    def __init__(self, es_url=ES_URL, es_index=ES_INDEX,
+                 es_alert_url=ES_URL, start=START, end=END):
         self.start = start
         self.end = end
         self.es_url = es_url
         self.es_index = es_index
+        self.es_alert_url = es_alert_url
+        self.es_alert_index = ES_ALERTS_INDEX
+
+        self.__check_alert_es()
+
+    def __check_alert_es(self):
+        """ Check that the alert ES is ready to receive alerts """
+        # Check that the index exists
+        index_url = self.es_alert_url+"/"+self.es_alert_index
+        r = requests.get(index_url)
+        if r.status_code == 200:
+            # Index exists
+            return
+        # Create the index with its mapping
+        r = requests.put(index_url)
+        # By default all strings are not analyzed
+        url_map = index_url + "/items/_mappings"
+        not_analyze_strings = """
+        {
+          "dynamic_templates": [
+            { "notanalyzed": {
+                  "match": "*",
+                  "match_mapping_type": "string",
+                  "mapping": {
+                      "type":  "string",
+                      "index": "not_analyzed"
+                  }
+               }
+            }
+          ]
+        } """
+        r = requests.put(url_map, data=not_analyze_strings)
+        r.raise_for_status()
 
     def get_metrics_data(self):
         """ Get the metrics data from ES """
@@ -174,6 +214,30 @@ class Alert():
         r = requests.post(url, query)
         r.raise_for_status()
         return r.json()
+
+    def alert2es(self, val, limit, field='', is_max=True, unit=''):
+        """ Create a JSON with the alert and upload it to alerts ES """
+        dt_now = get_now()
+        alert = {
+            "name": self.__class__.__name__,
+            "metric": {
+                "value": val,
+                "unit": unit
+            },
+            "metric_limit":
+            {
+                "value": limit,
+                "unit": unit
+            },
+            "field": field,
+            "is_max": is_max,
+            "@timestamp": dt_now.isoformat(),
+            "origin": self.es_url + "/" + self.es_index
+        }
+        url = self.es_alert_url + "/" + self.es_alert_index
+        uid = alert["name"]+"_"+str(dt_now.timestamp())
+        r = requests.post(url+"/items/"+uid, json.dumps(alert))
+        r.raise_for_status()
 
     def get_metrics(self):
         """ Get the metrics """
@@ -205,6 +269,7 @@ class Alert():
         print("ALERT %s: %i%s %s %i%s %s (%s/%s, %s->%s)" %
               (self.__class__.__name__, val, unit, op, limit, unit, field,
                self.es_url, self.es_index, self.start, self.end))
+        self.alert2es(val, limit, field=field, is_max=is_max, unit=unit)
 
 class AlertFromBuckets(Alert):
 
@@ -323,9 +388,35 @@ class Freshness(AlertFromBuckets):
         if freshness_days > max_days:
             self.raise_alert(freshness_days, max_days, unit='d')
 
+def get_params():
+    """Parse command line arguments"""
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-g', '--debug', dest='debug',
+                        action='store_true')
+    parser.add_argument('--index', help="Index name to get alerts from")
+    parser.add_argument('-e', '--elastic-url', help="Elastic URL to get alerts from")
+    parser.add_argument('--elastic-alerts-url', help="Elastic URL to store alerts")
+
+    # if len(sys.argv) == 1:
+    #     parser.print_help()
+    #     sys.exit(1)
+
+    args = parser.parse_args()
+
+    return args
+
+
 if __name__ == '__main__':
-    fresshness = Freshness()
-    fresshness.check(1)
+
+    args = get_params()
+    elastic = args.elastic_url
+    elastic_index = args.index
+    elastic_alerts = args.elastic_alerts_url
+
+    freshness = Freshness()
+    freshness.check(1)
     peter = PeterAndTheWolf()
     peter.check()
     trends = Trends()

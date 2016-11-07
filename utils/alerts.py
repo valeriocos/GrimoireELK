@@ -30,6 +30,7 @@ import pytz
 import requests
 
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from dateutil import parser
 
@@ -167,7 +168,7 @@ class ElasticQuery():
 class Alert():
 
     def __init__(self, es_url=ES_URL, es_index=ES_INDEX,
-                 es_alerts_url=ES_URL, start=START, end=END):
+                 es_alerts_url=ES_URL, start=START, end=END, tag=None):
         if not es_url:
             es_url=ES_URL
         if not es_index:
@@ -180,7 +181,13 @@ class Alert():
         self.es_index = es_index
         self.es_alerts_url = es_alerts_url
         self.es_alerts_index = ES_ALERTS_INDEX
-
+        self.tag = tag
+        if not self.tag:
+            # Try to extract it from the URL
+            if '@' in self.es_url:
+                self.tag = urlparse(self.es_url).netloc.split('@')[1].split(".")[0]
+            else:
+                self.tag = urlparse(self.es_url).netloc.split(".")[0]
         self.__check_alerts_es()
 
     def __check_alerts_es(self):
@@ -224,6 +231,7 @@ class Alert():
     def alert2es(self, val, limit, field='', is_max=True, unit=''):
         """ Create a JSON with the alert and upload it to alerts ES """
         dt_now = get_now()
+
         alert = {
             "name": self.__class__.__name__,
             "metric": {
@@ -238,8 +246,9 @@ class Alert():
             "field": field,
             "is_max": is_max,
             "@timestamp": dt_now.isoformat(),
-            "origin": self.es_url,
+            "url": self.es_url,
             "index": self.es_index,
+            "tag": self.tag,
             "query": json.dumps(json.loads(self.get_metrics_query()))
         }
         url = self.es_alerts_url + "/" + self.es_alerts_index
@@ -407,6 +416,7 @@ def get_params():
     parser.add_argument('--index', help="Index name to get alerts from")
     parser.add_argument('-e', '--elastic-url', help="Elastic URL to get alerts from")
     parser.add_argument('--elastic-alerts-url', help="Elastic URL to store alerts")
+    parser.add_argument('-t', '--tag', help="Tag to be added to alerts")
 
     # if len(sys.argv) == 1:
     #     parser.print_help()
@@ -423,15 +433,16 @@ if __name__ == '__main__':
     elastic = args.elastic_url
     elastic_index = args.index
     elastic_alerts = args.elastic_alerts_url
+    tag = args.tag
 
     freshness = Freshness(es_url=args.elastic_url, es_index=args.index,
-                          es_alerts_url=args.elastic_alerts_url)
+                          es_alerts_url=args.elastic_alerts_url, tag=tag)
     freshness.check(1)
     peter = PeterAndTheWolf(es_url=args.elastic_url, es_index=args.index,
-                            es_alerts_url=args.elastic_alerts_url)
+                            es_alerts_url=args.elastic_alerts_url, tag=tag)
     peter.check()
     trends = Trends(es_url=args.elastic_url, es_index=args.index,
-                    es_alerts_url=args.elastic_alerts_url)
+                    es_alerts_url=args.elastic_alerts_url, tag=tag)
     trends.check(min_val=22)
     trends.check('day', min_val=5)
     trends.check('month', max_val=10)

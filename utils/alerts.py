@@ -232,7 +232,9 @@ class Alert():
             "field": field,
             "is_max": is_max,
             "@timestamp": dt_now.isoformat(),
-            "origin": self.es_url + "/" + self.es_index
+            "origin": self.es_url,
+            "index": self.es_index,
+            "query": json.dumps(json.loads(self.get_metrics_query()))
         }
         url = self.es_alert_url + "/" + self.es_alert_index
         uid = alert["name"]+"_"+str(dt_now.timestamp())
@@ -260,6 +262,8 @@ class Alert():
         :param is_max: if the limix is max or min
         :param unit: unit of the measure
         """
+        self.alert2es(val, limit, field=field, is_max=is_max, unit=unit)
+
         if field != '':
             field = "for " + field
         op = "<"
@@ -269,7 +273,6 @@ class Alert():
         print("ALERT %s: %i%s %s %i%s %s (%s/%s, %s->%s)" %
               (self.__class__.__name__, val, unit, op, limit, unit, field,
                self.es_url, self.es_index, self.start, self.end))
-        self.alert2es(val, limit, field=field, is_max=is_max, unit=unit)
 
 class AlertFromBuckets(Alert):
 

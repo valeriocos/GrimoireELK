@@ -167,20 +167,26 @@ class ElasticQuery():
 class Alert():
 
     def __init__(self, es_url=ES_URL, es_index=ES_INDEX,
-                 es_alert_url=ES_URL, start=START, end=END):
+                 es_alerts_url=ES_URL, start=START, end=END):
+        if not es_url:
+            es_url=ES_URL
+        if not es_index:
+            es_index=ES_INDEX
+        if not es_alerts_url:
+            es_alerts_url=ES_URL
         self.start = start
         self.end = end
         self.es_url = es_url
         self.es_index = es_index
-        self.es_alert_url = es_alert_url
-        self.es_alert_index = ES_ALERTS_INDEX
+        self.es_alerts_url = es_alerts_url
+        self.es_alerts_index = ES_ALERTS_INDEX
 
-        self.__check_alert_es()
+        self.__check_alerts_es()
 
-    def __check_alert_es(self):
+    def __check_alerts_es(self):
         """ Check that the alert ES is ready to receive alerts """
         # Check that the index exists
-        index_url = self.es_alert_url+"/"+self.es_alert_index
+        index_url = self.es_alerts_url+"/"+self.es_alerts_index
         r = requests.get(index_url)
         if r.status_code == 200:
             # Index exists
@@ -236,7 +242,7 @@ class Alert():
             "index": self.es_index,
             "query": json.dumps(json.loads(self.get_metrics_query()))
         }
-        url = self.es_alert_url + "/" + self.es_alert_index
+        url = self.es_alerts_url + "/" + self.es_alerts_index
         uid = alert["name"]+"_"+str(dt_now.timestamp())
         r = requests.post(url+"/items/"+uid, json.dumps(alert))
         r.raise_for_status()
@@ -418,11 +424,14 @@ if __name__ == '__main__':
     elastic_index = args.index
     elastic_alerts = args.elastic_alerts_url
 
-    freshness = Freshness()
+    freshness = Freshness(es_url=args.elastic_url, es_index=args.index,
+                          es_alerts_url=args.elastic_alerts_url)
     freshness.check(1)
-    peter = PeterAndTheWolf()
+    peter = PeterAndTheWolf(es_url=args.elastic_url, es_index=args.index,
+                            es_alerts_url=args.elastic_alerts_url)
     peter.check()
-    trends = Trends()
+    trends = Trends(es_url=args.elastic_url, es_index=args.index,
+                    es_alerts_url=args.elastic_alerts_url)
     trends.check(min_val=22)
     trends.check('day', min_val=5)
     trends.check('month', max_val=10)

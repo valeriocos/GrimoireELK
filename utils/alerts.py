@@ -25,11 +25,16 @@
 
 import argparse
 import json
+import logging
+
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("requests").setLevel(logging.WARNING)
 
 import pytz
 import requests
 
 from datetime import datetime, timedelta
+from grimoire.utils import get_connectors
 from urllib.parse import urlparse
 
 from dateutil import parser
@@ -41,6 +46,7 @@ ES_ALERTS_URL = ES_URL
 ES_ALERTS_INDEX = 'alerts'
 START = parser.parse('1900-01-01')
 END = parser.parse('2100-01-01')
+DEFAULT_TS_FIELD = 'metadata__updated_on'
 
 def get_now():
     # Return now datetime with timezome
@@ -53,7 +59,7 @@ class ElasticQuery():
     AGG_SIZE = 100
 
     @classmethod
-    def get_query_range(cls, start=None, end=None):
+    def get_query_range(cls, field=DEFAULT_TS_FIELD, start=None, end=None):
         start_iso = None
         end_iso = None
 
@@ -65,19 +71,19 @@ class ElasticQuery():
         query_range = """
         {
           "range": {
-            "metadata__updated_on": {
+            "%s": {
               %s,
               %s
             }
           }
         }
-        """ % (start_iso, end_iso)
+        """ % (field, start_iso, end_iso)
 
         return query_range
 
     @classmethod
-    def get_query_all(cls, start=None, end=None):
-        query_range = cls.get_query_range(start, end)
+    def get_query_all(cls, field=DEFAULT_TS_FIELD, start=None, end=None):
+        query_range = cls.get_query_range(field, start, end)
 
         query_all = """
           "query": {
@@ -132,7 +138,7 @@ class ElasticQuery():
 
     @classmethod
     def get_count(cls, start = None, end = None):
-        query_all = cls.get_query_all(start, end)
+        query_all = cls.get_query_all(start=start, end=end)
 
         query = """
             {
@@ -146,7 +152,7 @@ class ElasticQuery():
 
     @classmethod
     def get_agg_count(cls, field, start=None, end=None, agg_type="terms"):
-        query_all = cls.get_query_all(start, end)
+        query_all = cls.get_query_all(field=field, start=start, end=end)
         if agg_type == "terms":
             query_agg = ElasticQuery.get_query_agg_terms(field)
         elif agg_type == "max":
@@ -285,9 +291,9 @@ class Alert():
         if is_max:
             op = ">"
 
-        print("ALERT %s: %i%s %s %i%s %s (%s/%s, %s->%s)" %
-              (self.__class__.__name__, val, unit, op, limit, unit, field,
-               self.es_url, self.es_index, self.start, self.end))
+        logging.info("ALERT %s: %i%s %s %i%s %s (%s/%s, %s->%s)",
+                     self.__class__.__name__, val, unit, op, limit, unit, field,
+                     self.es_url, self.es_index, self.start, self.end)
 
 class AlertFromBuckets(Alert):
 
@@ -396,7 +402,10 @@ class Freshness(AlertFromBuckets):
     AGG_TYPE = 'max'
 
     def get_metrics_query(self):
-        return ElasticQuery.get_agg_count("metadata__updated_on", self.start, self.end, Freshness.AGG_TYPE)
+        q = ElasticQuery.get_agg_count(DEFAULT_TS_FIELD, self.start, self.end, Freshness.AGG_TYPE)
+        if self.es_index == "twitter":
+            q = ElasticQuery.get_agg_count("timestamp", self.start, self.end, Freshness.AGG_TYPE)
+        return q
 
     def check(self, max_days=0):
         """ Check that the data was updated before "days" ago """
@@ -426,15 +435,8 @@ def get_params():
 
     return args
 
-
-if __name__ == '__main__':
-
-    args = get_params()
-    elastic = args.elastic_url
-    elastic_index = args.index
-    elastic_alerts = args.elastic_alerts_url
-    tag = args.tag
-
+def get_test_alerts(args):
+    """ Samples of alerts that can be tracked """
     freshness = Freshness(es_url=args.elastic_url, es_index=args.index,
                           es_alerts_url=args.elastic_alerts_url, tag=tag)
     freshness.check(1)
@@ -447,3 +449,45 @@ if __name__ == '__main__':
     trends.check('day', min_val=5)
     trends.check('month', max_val=10)
     trends.check('year')
+
+def get_freshness(args):
+    """ Check the freshness in all data sources """
+    if not args.index:
+        logging.info("Checking freshness for %s", args.elastic_url)
+        # Get fresshness for all indexes for data sources
+        for ds in get_connectors():
+            ds_index = ds
+            if ds == "git":
+                ds_index = "git_enrich"
+            elif ds == "gerrit":
+                ds_index = "gerrit_enrich"
+            elif ds == "github":
+                ds_index = "github_issues"
+            try:
+                freshness = Freshness(es_url=args.elastic_url, es_index=ds_index,
+                                      es_alerts_url=args.elastic_alerts_url, tag=tag)
+                freshness.check(1)
+            except requests.exceptions.HTTPError as ex:
+                logging.debug(ex)
+
+    else:
+        freshness = Freshness(es_url=args.elastic_url, es_index=args.index,
+                              es_alerts_url=args.elastic_alerts_url, tag=tag)
+        freshness.check(1)
+
+
+if __name__ == '__main__':
+
+    args = get_params()
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(message)s')
+        logging.debug("Debug mode activated")
+    else:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+    elastic = args.elastic_url
+    elastic_index = args.index
+    elastic_alerts = args.elastic_alerts_url
+    tag = args.tag
+
+    # get_test_alerts(args)
+    get_freshness(args)

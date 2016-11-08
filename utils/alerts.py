@@ -463,6 +463,8 @@ def get_freshness(args):
                 ds_index = "gerrit_enrich"
             elif ds == "github":
                 ds_index = "github_issues"
+            elif ds == "jenkins":
+                ds_index = "jenkins_enrich"
             try:
                 freshness = Freshness(es_url=args.elastic_url, es_index=ds_index,
                                       es_alerts_url=args.elastic_alerts_url, tag=tag)

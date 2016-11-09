@@ -31,9 +31,11 @@ import requests
 from dateutil import parser
 
 from grimoire.elk.enrich import Enrich
+from grimoire.elk.sortinghat import SortingHat
 
 
 GITHUB = 'https://github.com/'
+SH_GIT_COMMIT = 'github-commit'
 
 class GitEnrich(Enrich):
 
@@ -76,45 +78,54 @@ class GitEnrich(Enrich):
 
         return {"items":mapping}
 
-
     def get_identities(self, item):
         """ Return the identities from an item.
             If the repo is in GitHub, get the usernames from GitHub. """
         identities = []
 
+        def add_sh_github_identity(user, user_field, rol):
+            """ Add a new github identity to SH if it does not exists """
+            github_repo = None
+            if GITHUB in item['origin']:
+                github_repo = item['origin'].replace(GITHUB,'').replace('.git','')
+            if not github_repo:
+                return
+
+            # Try to get the identity from SH
+            user_data = item['data'][user_field]
+            sh_identity = SortingHat.get_github_commit_username(self.sh_db, user, SH_GIT_COMMIT)
+            if not sh_identity:
+                # Get the usename from GitHub
+                gh_username = self.get_github_login(user_data, rol, commit_hash, github_repo)
+                # Create a new SH identity with name, email from git and username from github
+                logging.debug("Adding new identity %s to SH %s: %s", gh_username, SH_GIT_COMMIT, user)
+                user = self.get_sh_identity(user_data, gh_username)
+                SortingHat.add_identity(self.sh_db, user, SH_GIT_COMMIT)
+            else:
+                if user_data not in self.github_logins:
+                    self.github_logins[user_data] = sh_identity['username']
+                    logging.debug("GitHub-commit exists. username:%s user:%s", username, user_data)
+
         commit_hash = item['data']['commit']
-        github_repo = None
-        if GITHUB in item['origin']:
-            github_repo = item['origin'].replace(GITHUB,'').replace('.git','')
 
         if item['data']['Author']:
             username = None
-            if self.github_token and github_repo:
-                # Get the usename from GitHub
-                username = self.get_github_login(item['data']['Author'], "author", commit_hash, github_repo)
             user = self.get_sh_identity(item['data']["Author"], username)
             identities.append(user)
-
-        if item['data']['Commit'] and github_repo:
-            username = None
             if self.github_token:
-                # Get the username from GitHub
-                username = self.get_github_login(item['data']['Commit'], "committer", commit_hash, github_repo)
+                add_sh_github_identity(user, 'Author', 'author')
+        if item['data']['Commit']:
+            username = None
             user = self.get_sh_identity(item['data']['Commit'], username)
             identities.append(user)
+            if self.github_token:
+                add_sh_github_identity(user, 'Commit', 'committer')
 
         return identities
 
     def get_sh_identity(self, git_user, username=None):
         # John Smith <john.smith@bitergia.com>
         identity = {}
-
-        if username is None and self.github_token:
-            # Try to get the GitHub login from the cache
-            try:
-                username = self.github_logins[git_user]
-            except KeyError:
-                pass
 
         name = git_user.split("<")[0]
         name = name.strip()  # Remove space between user and email
@@ -181,7 +192,7 @@ class GitEnrich(Enrich):
                 raise RuntimeError
 
             self.github_logins[user] = login
-            logging.debug("%s is %s in github (not found %i a %i u)", user, login,
+            logging.debug("%s is %s in github (not found %i authors %i committers )", user, login,
                           self.github_logins_author_not_found,
                           self.github_logins_committer_not_found)
 

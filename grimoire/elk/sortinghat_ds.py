@@ -37,6 +37,28 @@ class SortingHatDSEnrich(Enrich):
     def get_field_event_unique_id(self):
         return 'id'
 
+    def get_elastic_mappings(self):
+
+        mapping = """
+        {
+            "properties": {
+                "enrollments_custom_analyzed" : {
+                  "type" : "string",
+                  "analyzer" : "comma",
+                  "fielddata" : "true"
+                }
+           }
+        } """
+
+        # For ES 4
+        # "question_tags_custom_analyzed_5" : {
+        #   "type" : "string",
+        #   "analyzer" : "comma" }
+
+
+        return {"items":mapping}
+
+
     def get_rich_events(self, item):
         """ Create a new eventry (event) per identity in the unique identity """
 
@@ -58,6 +80,7 @@ class SortingHatDSEnrich(Enrich):
 
             # enrollments
             identity['enrollments'] = uid['enrollments']
+            identity['enrollments_custom_analyzed'] = uid['enrollments']
             # Real event data
             copy_fields = ['id', 'uuid', 'email', 'username', 'name', 'source']
             for f in copy_fields:

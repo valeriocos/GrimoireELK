@@ -357,6 +357,18 @@ class Enrich(object):
                             "type" : "custom",
                             "tokenizer" : "comma"
                         }
+                    },
+                    "tokenizer" : {
+                        "semicolon" : {
+                            "type" : "pattern",
+                            "pattern" : ";"
+                        }
+                    },
+                    "analyzer" : {
+                        "semicolon" : {
+                            "type" : "custom",
+                            "tokenizer" : "semicolon"
+                        }
                     }
                 }
         }

@@ -29,6 +29,8 @@ from dateutil import parser
 
 from grimoire.elk.enrich import Enrich
 
+ORGS_SEP=";"  # The sep between organizations
+
 class SortingHatDSEnrich(Enrich):
 
     def get_field_unique_id(self):
@@ -44,16 +46,16 @@ class SortingHatDSEnrich(Enrich):
             "properties": {
                 "enrollments_custom_analyzed" : {
                   "type" : "string",
-                  "analyzer" : "comma",
+                  "analyzer" : "semicolon",
                   "fielddata" : "true"
                 }
            }
         } """
 
         # For ES 4
-        # "question_tags_custom_analyzed_5" : {
+        # "enrollments_custom_analyzed" : {
         #   "type" : "string",
-        #   "analyzer" : "comma" }
+        #   "analyzer" : "semicolon" }
 
 
         return {"items":mapping}
@@ -73,6 +75,7 @@ class SortingHatDSEnrich(Enrich):
             # Needed for incremental updates from the item
             identity['metadata__updated_on'] = item['metadata__updated_on']
             identity['origin'] = item['origin']
+            identity['tag'] = item['tag']
             # Common fields with the uid
             cfields = ['profile_name', 'profile_email',  'profile_is_bot']
             for f in cfields:
@@ -124,7 +127,7 @@ class SortingHatDSEnrich(Enrich):
         if len(uidentity["enrollments"])>0:
             eitem["enrollments"] = ''
             for e in uidentity["enrollments"]:
-                eitem["enrollments"] += ","+e['organization']
+                eitem["enrollments"] += ORGS_SEP+e['organization']
             eitem["enrollments"] = eitem["enrollments"][1:]
         # Profile
         eitem['profile_name'] = None

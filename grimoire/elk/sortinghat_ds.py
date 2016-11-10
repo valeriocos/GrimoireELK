@@ -106,8 +106,10 @@ class SortingHatDSEnrich(Enrich):
         # Profile
         eitem['profile_name'] = None
         eitem['profile_email'] = None
+        eitem['profile_bot'] = None
         if uidentity['profile']:
             eitem['profile_name'] = uidentity['profile']['name']
             eitem['profile_email'] = uidentity['profile']['email']
+            eitem['profile_bot'] = uidentity['profile']['is_bot']
 
         return eitem

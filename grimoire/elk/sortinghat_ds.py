@@ -52,7 +52,7 @@ class SortingHatDSEnrich(Enrich):
             identity['metadata__updated_on'] = item['metadata__updated_on']
             identity['origin'] = item['origin']
             # Common fields with the uid
-            cfields = ['profile_name', 'profile_email']
+            cfields = ['profile_name', 'profile_email',  'profile_is_bot']
             for f in cfields:
                 identity[f] = uid[f]
 
@@ -106,10 +106,10 @@ class SortingHatDSEnrich(Enrich):
         # Profile
         eitem['profile_name'] = None
         eitem['profile_email'] = None
-        eitem['profile_bot'] = None
+        eitem['profile_is_bot'] = None
         if uidentity['profile']:
             eitem['profile_name'] = uidentity['profile']['name']
             eitem['profile_email'] = uidentity['profile']['email']
-            eitem['profile_bot'] = uidentity['profile']['is_bot']
+            eitem['profile_is_bot'] = uidentity['profile']['is_bot']
 
         return eitem

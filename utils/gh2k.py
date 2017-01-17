@@ -42,6 +42,8 @@ from email.mime.text import MIMEText
 from grimoire_elk.ocean.elastic import ElasticOcean
 from grimoire_elk.utils import config_logging
 
+from sortinghat.cmd.init import Init
+
 GITHUB_URL = "https://github.com/"
 GITHUB_API_URL = "https://api.github.com"
 NREPOS = 10 # Default number of repos to be analyzed
@@ -67,6 +69,10 @@ def get_params_parser():
                         help='GraaS service URL.')
     parser.add_argument('-n', '--nrepos', dest='nrepos', type=int, default=NREPOS,
                         help='Number of GitHub repositories from the Organization to be analyzed (default:10)')
+    # SortingHat config
+    parser.add_argument('--db-user', help='Database user', default='root')
+    parser.add_argument('--db-password', help='Database user password', default='')
+    parser.add_argument('--db-host', help='Database host', default='mariadb')
 
     return parser
 
@@ -294,17 +300,33 @@ if __name__ == '__main__':
     repos = get_repositores(owner_url, args.token, args.nrepos)
     first_repo = True
 
+    # Create SortingHat database for the owner
+    db_sh = args.org + "_sh"
+    sh_kwargs={'user': args.db_user, 'password': args.db_password,
+               'database': db_sh, 'host': args.db_host,
+               'port': None}
+
+    code = Init(**sh_kwargs).run(db_sh)
+
     for repo in repos:
         project = owner  # project = org in GitHub
         url = GITHUB_URL+owner+"/"+repo['name']
-        basic_cmd = "p2o.py -g -e %s --project %s --enrich" % \
-            (args.elastic_url, project)
-        cmd = basic_cmd + " --index %s git %s" % (git_index, url)
+        basic_cmd = "p2o.py -g -e %s --db-sortinghat %s --project %s --enrich" % \
+            (args.elastic_url, db_sh, project)
+        db_password = args.db_password
+        if db_password == '':
+            db_password = "''"
+        basic_cmd = basic_cmd + " --db-user %s --db-password %s --db-host %s " % \
+            (args.db_user, db_password, args.db_host)
+        # Include github-token so git identities are merget with github ones
+        cmd = basic_cmd + "--github-token %s --index %s git %s" % (args.token, git_index, url)
+        logging.debug("git p2o: %s" % cmd)
         git_cmd = subprocess.call(cmd, shell=True)
         if git_cmd != 0:
             logging.error("Problems with command: %s" % cmd)
-        cmd = basic_cmd + " --index %s github --owner %s --repository %s -t %s --sleep-for-rate" % \
-            (issues_index, owner, repo['name'], args.token)
+        cmd = basic_cmd + "--index %s github -t %s --sleep-for-rate %s %s" % \
+            (issues_index, args.token, owner, repo['name'])
+        logging.debug("github p2o: %s" % cmd)
         issues_cmd = subprocess.call(cmd, shell=True)
         if issues_cmd != 0:
             logging.error("Problems with command: %s" % cmd)

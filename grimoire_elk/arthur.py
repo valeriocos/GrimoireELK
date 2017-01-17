@@ -31,6 +31,11 @@ import traceback
 from datetime import datetime
 from dateutil import parser
 
+from sortinghat.cmd.affiliate import Affiliate
+from sortinghat.cmd.autoprofile import AutoProfile
+from sortinghat.cmd.unify import Unify
+from sortinghat.command import CMD_SUCCESS
+
 from .ocean.conf import ConfOcean
 from .utils import get_elastic
 from .utils import get_connectors, get_connector_from_name
@@ -474,6 +479,21 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
                 # FIXME: This step won't be done from enrich in the future
                 total_ids = load_identities(ocean_backend, enrich_backend)
                 logger.info("Total identities loaded %i ", total_ids)
+                # For Cauldron do also the unify and the autoprofile
+                sh_kwargs={'user': db_user, 'password': db_password,
+                           'database': db_sortinghat, 'host': db_host,
+                           'port': None}
+                kwargs = {'matching':"email", 'fast_matching':True}
+                logger.debug("Unifying identities")
+                code = Unify(**sh_kwargs).unify(**kwargs)
+                if code != CMD_SUCCESS:
+                    logger.error("[sortinghat] Error in unify %s", kwargs)
+                # And also de autoprofile
+                autoprofile = "customer git github"
+                logger.debug("Creating a profile for the identities")
+                code = AutoProfile(**sh_kwargs).autocomplete(autoprofile)
+                if code != CMD_SUCCESS:
+                    logger.error("Error in autoprofile %s", kwargs)
 
             if only_identities:
                 logger.info("Only SH identities added. Enrich not done!")

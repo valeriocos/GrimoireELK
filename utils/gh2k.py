@@ -282,16 +282,16 @@ if __name__ == '__main__':
     config_logging(args.debug)
 
     # All projects share the same index
-    git_index = "github_git"
-    issues_index = "github_issues"
+    git_index = "github_git_raw"
+    issues_index = "github_issues_raw"
 
 
     # The owner could be a org or an user.
     owner_url = get_owner_repos_url(args.org, args.token)
     owner = args.org
 
-    logging.info("Creating new GitHub dashboard with %i repositores from %s" %
-                (args.nrepos, owner))
+    logging.info("Creating new GitHub dashboard with %i repositores from %s",
+                 args.nrepos, owner)
 
     # Generate redirect web page first so dashboard can be used
     # with partial data during data retrieval

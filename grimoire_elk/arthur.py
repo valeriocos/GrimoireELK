@@ -483,7 +483,8 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
                 sh_kwargs={'user': db_user, 'password': db_password,
                            'database': db_sortinghat, 'host': db_host,
                            'port': None}
-                kwargs = {'matching':"email", 'fast_matching':True}
+                # kwargs = {'matching':"email", 'fast_matching':True}
+                kwargs = {'matching':"github", 'fast_matching':True}
                 logger.debug("Unifying identities")
                 code = Unify(**sh_kwargs).unify(**kwargs)
                 if code != CMD_SUCCESS:

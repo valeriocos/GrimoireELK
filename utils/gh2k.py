@@ -46,6 +46,7 @@ from sortinghat.cmd.init import Init
 
 GITHUB_URL = "https://github.com/"
 GITHUB_API_URL = "https://api.github.com"
+GITHUB_MIN_RATE_LIMIT_TO_SLEEP = 100  # it the rate limit is 100 sleep
 NREPOS = 10 # Default number of repos to be analyzed
 CAULDRON_DASH_URL = "https://cauldron.io/dashboards"
 
@@ -324,8 +325,8 @@ if __name__ == '__main__':
         git_cmd = subprocess.call(cmd, shell=True)
         if git_cmd != 0:
             logging.error("Problems with command: %s" % cmd)
-        cmd = basic_cmd + "--index %s github -t %s --sleep-for-rate %s %s" % \
-            (issues_index, args.token, owner, repo['name'])
+        cmd = basic_cmd + "--index %s github --min-rate-to-sleep %i -t %s --sleep-for-rate %s %s" % \
+            (issues_index, GITHUB_MIN_RATE_LIMIT_TO_SLEEP, args.token, owner, repo['name'])
         logging.debug("github p2o: %s" % cmd)
         issues_cmd = subprocess.call(cmd, shell=True)
         if issues_cmd != 0:

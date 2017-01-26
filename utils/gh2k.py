@@ -333,7 +333,7 @@ if __name__ == '__main__':
             logging.error("Problems with command: %s" % cmd)
         else:
             if first_repo:
-                if args.contact:
+                if args.contact and args.contact != 'None':
                     notify_contact(args.contact, owner, args.graas_url, repos, first_repo)
                 first_repo = False
 
@@ -343,8 +343,8 @@ if __name__ == '__main__':
     logging.info("Finished %s in %.2f min" % (owner, total_time_min))
 
     # Notify the contact about the new dashboard
-    if args.contact:
+    if args.contact and args.contact != 'None':
         notify_contact(args.contact, owner, args.graas_url, repos)
-    if args.twitter:
+    if args.twitter and args.twitter != 'None':
         logging.debug("Twitter user to be notified: %s" % (args.twitter))
         publish_twitter(args.twitter, owner)

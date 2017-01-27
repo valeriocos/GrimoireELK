@@ -141,9 +141,10 @@ class MeetupEnrich(Enrich):
         # event host fields: author of the event
         if 'event_hosts' in event:
             host = event['event_hosts'][0]
-            eitem['member_photo_url'] = host['photo']['photo_link']
-            eitem['member_photo_id'] = host['photo']['id']
-            eitem['member_photo_type'] = host['photo']['type']
+            if 'photo' in host:
+                eitem['member_photo_url'] = host['photo']['photo_link']
+                eitem['member_photo_id'] = host['photo']['id']
+                eitem['member_photo_type'] = host['photo']['type']
             eitem['member_is_host'] = True
             eitem['member_id'] = host['id']
             eitem['member_name'] = host['name']
@@ -258,7 +259,8 @@ class MeetupEnrich(Enrich):
                     ecomment['member_photo_url'] = member['photo']['photo_link']
                     ecomment['member_photo_id'] = member['photo']['id']
                     ecomment['member_photo_type'] = member['photo']['type']
-                ecomment['member_is_host'] = member['event_context']['host']
+                if 'event_context' in member:
+                    ecomment['member_is_host'] = member['event_context']['host']
                 ecomment['member_id'] = member['id']
                 ecomment['member_name'] = member['name']
                 ecomment['member_url'] = "https://www.meetup.com/members/" + str(member['id'])

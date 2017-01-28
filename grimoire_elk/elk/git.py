@@ -105,7 +105,11 @@ class GitEnrich(Enrich):
 
             # Try to get the identity from SH
             user_data = item['data'][user_field]
-            sh_identity = SortingHat.get_github_commit_username(self.sh_db, user, SH_GIT_COMMIT)
+            sh_identity = None
+            try:
+                sh_identity = SortingHat.get_github_commit_username(self.sh_db, user, SH_GIT_COMMIT)
+            except UnicodeEncodeError:
+                sh_identity = None
             if not sh_identity:
                 # Get the usename from GitHub
                 gh_username = self.get_github_login(user_data, rol, commit_hash, github_repo)

@@ -123,7 +123,7 @@ def feed_backend(url, clean, fetch_cache, backend_name, backend_params,
             logger.error("Error feeding ocean from %s (%s): %s" %
                           (backend_name, backend.tag, ex))
             # this print makes blackbird fails
-            traceback.print_exc()
+            # traceback.print_exc()
         else:
             logger.error("Error feeding ocean %s" % ex)
 

@@ -47,7 +47,8 @@ from sortinghat.cmd.init import Init
 GITHUB_URL = "https://github.com/"
 GITHUB_API_URL = "https://api.github.com"
 GITHUB_MIN_RATE_LIMIT_TO_SLEEP = 100  # it the rate limit is 100 sleep
-NREPOS = 10 # Default number of repos to be analyzed
+# NREPOS = 10  # Default number of repos to be analyzed
+NREPOS = 30  #  Changed for FOSDEM17
 CAULDRON_DASH_URL = "https://cauldron.io/dashboards"
 
 def get_params_parser():
@@ -165,7 +166,7 @@ def get_repositores(owner_url, token, nrepos):
         logging.debug("%s %i %s" % (repo['updated_at'], repo['size'], repo['name']))
     return nrepos_sorted
 
-def create_redirect_web_page(web_dir, org_name, kibana_url):
+def create_redirect_web_page(web_dir, org_name, kibana_url, kibana_version='5'):
     """ Create HTML pages with the org name that redirect to
         the Kibana dashboard filtered for this org """
     html_redirect = """
@@ -175,6 +176,15 @@ def create_redirect_web_page(web_dir, org_name, kibana_url):
         </head>
     </html>
     """ % (kibana_url, org_name, org_name)
+    # The index is now "git" and the link is shorter and also works in Kibana4
+    if kibana_version == '5':
+        html_redirect = """
+        <html>
+          <head>
+            <meta http-equiv="refresh" content="0; URL=%s/app/kibana#/dashboard/Overview?_g=(filters:!(('$state':(store:globalState),meta:(alias:!n,disabled:!f,index:git,key:project,negate:!f,value:%s),query:(match:(project:(query:%s,type:phrase))))),time:(from:now-3M,mode:quick,to:now))" />
+          </head>
+      </html>
+      """ % (kibana_url, org_name, org_name)
     try:
         with open(path.join(web_dir,org_name),"w") as f:
             f.write(html_redirect)
@@ -253,7 +263,8 @@ def publish_twitter(twitter_contact, owner):
     r = requests.post(url="https://api.twitter.com/1.1/statuses/update.json?status="+status, auth=oauth)
 
 def get_oauth():
-    filepath = "twitter.oauth"
+    filepath = "/home/bitergia/GrimoireELK/utils/"
+    filepath += "twitter.oauth"
     with open(filepath, 'r'): pass
     config = configparser.SafeConfigParser()
     config.read(filepath)

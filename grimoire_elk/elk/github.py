@@ -218,6 +218,11 @@ class GitHubEnrich(Enrich):
                "title_analyzed": {
                  "type": "string",
                  "index":"analyzed"
+               },
+               "labels_custom_analyzed" : {
+                 "type" : "string",
+                 "analyzer" : "comma",
+                 "fielddata" : "true"
                }
             }
         }
@@ -311,10 +316,11 @@ class GitHubEnrich(Enrich):
         labels = ''
         if 'labels' in issue:
             for label in issue['labels']:
-                labels += label['name']+";;"
+                labels += label['name']+","
         if labels != '':
-            labels[:-2]
+            labels[:-1]
         rich_issue['labels'] = labels
+        rich_issue['labels_custom_analyzed'] = labels
         rich_issue['repository'] = rich_issue['origin']
 
         rich_issue['pull_request'] = True

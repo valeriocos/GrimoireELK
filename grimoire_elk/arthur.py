@@ -485,7 +485,12 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
                            'port': None}
                 # kwargs = {'matching':"email", 'fast_matching':True}
                 kwargs = {'matching':"github", 'fast_matching':True}
-                logger.debug("Unifying identities")
+                logger.debug("Unifying identities by github")
+                code = Unify(**sh_kwargs).unify(**kwargs)
+                if code != CMD_SUCCESS:
+                    logger.error("[sortinghat] Error in unify %s", kwargs)
+                kwargs = {'matching':"email-name", 'fast_matching':True}
+                logger.debug("Unifying identities by email-name")
                 code = Unify(**sh_kwargs).unify(**kwargs)
                 if code != CMD_SUCCESS:
                     logger.error("[sortinghat] Error in unify %s", kwargs)

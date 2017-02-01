@@ -281,12 +281,10 @@ class GitEnrich(Enrich):
         # author_name and author_domain are added always
         identity  = self.get_sh_identity(commit["Author"])
         eitem["author_name"] = identity['name']
-        eitem["author_domain"] = self.get_identity_domain(identity)
 
         # committer data
         identity  = self.get_sh_identity(commit["Commit"])
         eitem["committer_name"] = identity['name']
-        eitem["committer_domain"] = self.get_identity_domain(identity)
 
         # title from first line
         if 'message' in commit:
@@ -305,6 +303,12 @@ class GitEnrich(Enrich):
 
         if self.sortinghat:
             eitem.update(self.get_item_sh(item, self.roles))
+
+        # The domain field must be filled with the current commit data
+        identity  = self.get_sh_identity(commit["Author"])
+        eitem["author_domain"] = self.get_identity_domain(identity)
+        identity  = self.get_sh_identity(commit["Commit"])
+        eitem["committer_domain"] = self.get_identity_domain(identity)
 
         if self.prjs_map:
             eitem.update(self.get_item_project(eitem))

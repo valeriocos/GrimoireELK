@@ -170,9 +170,8 @@ class GitEnrich(Enrich):
             commit_url = GITHUB_API_URL+"/repos/%s/commits/%s" % (repo, commit_hash)
             headers = {'Authorization': 'token ' + self.github_token}
 
-            r = self.requests.get(commit_url, headers=headers)
-
             try:
+                r = self.requests.get(commit_url, headers=headers)
                 r.raise_for_status()
             except requests.exceptions.ConnectionError as ex:
                 # Connection error

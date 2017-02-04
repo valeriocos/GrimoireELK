@@ -313,7 +313,7 @@ if __name__ == '__main__':
     first_repo = True
 
     # Create SortingHat database for the owner
-    db_sh = args.org + "_sh"
+    db_sh = args.org.replace("-","_") + "_sh"
     sh_kwargs={'user': args.db_user, 'password': args.db_password,
                'database': db_sh, 'host': args.db_host,
                'port': None}

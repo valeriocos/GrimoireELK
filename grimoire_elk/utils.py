@@ -48,6 +48,7 @@ from .ocean.meetup import MeetupOcean
 from .ocean.mozillaclub import MozillaClubOcean
 from .ocean.nntp import NNTPOcean
 from .ocean.phabricator import PhabricatorOcean
+from .ocean.puppetforge import PuppetForgeOcean
 from .ocean.redmine import RedmineOcean
 from .ocean.remo2 import ReMoOcean
 from .ocean.rss import RSSOcean
@@ -75,6 +76,7 @@ from .elk.meetup import MeetupEnrich
 from .elk.mozillaclub import MozillaClubEnrich
 from .elk.nntp import NNTPEnrich
 from .elk.phabricator import PhabricatorEnrich
+from .elk.puppetforge import PuppetForgeEnrich
 from .elk.redmine import RedmineEnrich
 # from .elk.remo import ReMoEnrich
 from .elk.remo2 import ReMoEnrich
@@ -112,6 +114,7 @@ from perceval.backends.core.telegram import Telegram, TelegramCommand
 from perceval.backends.mozilla.kitsune import Kitsune, KitsuneCommand
 from perceval.backends.mozilla.mozillaclub import MozillaClub, MozillaClubCommand
 from perceval.backends.mozilla.remo import ReMo, ReMoCommand
+from perceval.backends.puppet.puppetforge import PuppetForge, PuppetForgeCommand
 
 
 from .elk.elastic import ElasticSearch
@@ -164,6 +167,7 @@ def get_connectors():
             "nntp":[NNTP, NNTPOcean, NNTPEnrich, NNTPCommand],
             "phabricator":[Phabricator, PhabricatorOcean, PhabricatorEnrich, PhabricatorCommand],
             "pipermail":[Pipermail, MBoxOcean, PipermailEnrich, PipermailCommand],
+            "puppetforge":[PuppetForge, PuppetForgeOcean, PuppetForgeEnrich, PuppetForgeCommand],
             "redmine":[Redmine, RedmineOcean, RedmineEnrich, RedmineCommand],
             "remo":[ReMo, ReMoOcean, ReMoEnrich, ReMoCommand],
             "rss":[RSS, RSSOcean, RSSEnrich, RSSCommand],

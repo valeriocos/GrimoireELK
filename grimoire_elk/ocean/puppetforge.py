@@ -26,4 +26,8 @@ from .elastic import ElasticOcean
 class PuppetForgeOcean(ElasticOcean):
     """PuppetForge Ocean feeder"""
 
+    @classmethod
+    def get_perceval_params_from_url(cls, url):
+        """ Puppet perceval backend does not need any param """
+        return []
     pass

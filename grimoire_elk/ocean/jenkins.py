@@ -30,3 +30,48 @@ class JenkinsOcean(ElasticOcean):
 
     def _fix_item(self, item):
         item["ocean-unique-id"] = item["data"]["url"]
+
+    def get_elastic_mappings(self):
+        mapping = '''
+         {
+            "dynamic":true,
+                "properties": {
+                    "data": {
+                        "properties": {
+                            "runs": {
+                                "dynamic":false,
+                                "properties": {}
+                            },
+                            "actions": {
+                                "dynamic":false,
+                                "properties": {}
+                            }
+                        }
+                    }
+                }
+        }
+        '''
+
+        return {"items":mapping}
+
+    @classmethod
+    def get_p2o_params_from_url(cls, url):
+        # Jenkins could include in the URL a jenkins-rename-file T1746
+        params = {}
+
+        tokens = url.split(' ', 1)  # Just split the URL not the filter
+        params['url'] = tokens[0]
+
+        if len(tokens) > 1:
+            params['jenkins-rename-file'] = tokens[1].split(" ", 1)[1]
+
+        return params
+
+    @classmethod
+    def get_perceval_params_from_url(cls, url):
+        params = []
+        tokens = url.split(' ', 1)  # Just split the URL not jenkins-rename-file
+        url = tokens[0]
+        params.append(url)
+
+        return params

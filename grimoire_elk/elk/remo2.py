@@ -26,6 +26,10 @@ import logging
 
 from .enrich import Enrich, metadata
 
+
+logger = logging.getLogger(__name__)
+
+
 class ReMoEnrich(Enrich):
 
     def __init__(self, db_sortinghat=None, db_projects_map=None, json_projects_map=None,
@@ -103,7 +107,7 @@ class ReMoEnrich(Enrich):
         elif 'first_name' in item:
             category = 'users'
         else:
-            logging.error("Can not detect category in item %s", item)
+            logger.error("Can not detect category in item %s", item)
 
         return category
 
@@ -176,6 +180,15 @@ class ReMoEnrich(Enrich):
             self.author = "user"
             eitem.update(self.get_item_sh(item))
 
+        eitem.update(self.get_grimoire_fields(activity["report_date"], "activity"))
+
+        eitem["is_attendee"] = 0
+        eitem["is_organizer"] = 0
+        if eitem["activity"] == "Attended an Event":
+            eitem["is_attendee"] = 1
+        elif eitem["activity"] == "Organized an Event":
+            eitem["is_organizer"] = 1
+
         return eitem
 
     def __get_rich_item_users(self, item):
@@ -226,5 +239,8 @@ class ReMoEnrich(Enrich):
         if self.sortinghat:
             self.author = 'owner'
             eitem.update(self.get_item_sh(item))
+
+        eitem.update(self.get_grimoire_fields(event["start"], "event"))
+
 
         return eitem

@@ -36,7 +36,9 @@ from .utils import get_elastic
 from .utils import get_connectors, get_connector_from_name
 from .elk.utils import get_repository_filter
 
+
 logger = logging.getLogger(__name__)
+
 
 def feed_backend(url, clean, fetch_cache, backend_name, backend_params,
                  es_index=None, es_index_enrich=None, project=None):
@@ -100,9 +102,9 @@ def feed_backend(url, clean, fetch_cache, backend_name, backend_params,
                 category = backend_cmd.parsed_args.category
 
         # from_date param support
-        if offset and category:
+        if offset is not None and category:
             ocean_backend.feed(from_offset=offset, category=category)
-        elif offset:
+        elif offset is not None:
             ocean_backend.feed(from_offset=offset)
         elif from_date and from_date.replace(tzinfo=None) != parser.parse("1970-01-01"):
             if category:
@@ -146,7 +148,7 @@ def feed_backend(url, clean, fetch_cache, backend_name, backend_params,
 def get_items_from_uuid(uuid, enrich_backend, ocean_backend):
     """ Get all items that include uuid """
 
-    # logging.debug("Getting items for merged uuid %s "  % (uuid))
+    # logger.debug("Getting items for merged uuid %s "  % (uuid))
 
     uuid_fields = enrich_backend.get_fields_uuid()
 
@@ -176,7 +178,7 @@ def get_items_from_uuid(uuid, enrich_backend, ocean_backend):
     eitems = r.json()['hits']['hits']
 
     if len(eitems) == 0:
-        # logging.warning("No enriched items found for uuid: %s " % (uuid))
+        # logger.warning("No enriched items found for uuid: %s " % (uuid))
         return []
 
     items_ids = []
@@ -350,6 +352,14 @@ def get_ocean_backend(backend_cmd, enrich_backend, no_incremental,
         else:
             ocean_backend = connector[1](backend)
     else:
+        # We can have params for non perceval backends also
+        params = enrich_backend.backend_params
+        if params:
+            try:
+                date_pos = params.index('--from-date')
+                last_enrich = parser.parse(params[date_pos + 1])
+            except ValueError:
+                pass
         if last_enrich:
             ocean_backend = connector[1](backend, from_date=last_enrich)
         else:
@@ -386,7 +396,7 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
                    db_user=None, db_password=None, db_host=None,
                    do_refresh_projects=False, do_refresh_identities=False,
                    author_id=None, author_uuid=None, filter_raw=None,
-                   filters_raw_prefix=None):
+                   filters_raw_prefix=None, jenkins_rename_file=None):
     """ Enrich Ocean index """
 
 
@@ -423,6 +433,7 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
 
         enrich_backend = connector[2](db_sortinghat, db_projects_map, json_projects_map,
                                       db_user, db_password, db_host)
+        enrich_backend.set_params(backend_params)
         if url_enrich:
             elastic_enrich = get_elastic(url_enrich, enrich_index, clean, enrich_backend)
         else:
@@ -430,7 +441,8 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
         enrich_backend.set_elastic(elastic_enrich)
         if github_token and backend_name == "git":
             enrich_backend.set_github_token(github_token)
-
+        if jenkins_rename_file and backend_name == "jenkins":
+            enrich_backend.set_jenkins_rename_file(jenkins_rename_file)
 
         # filter_raw must be converted from the string param to a dict
         filter_raw_dict = {}
@@ -500,11 +512,11 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
                 # Enrichment for the new items once SH update is finished
                 if not events_enrich:
                     enrich_count = enrich_items(ocean_backend, enrich_backend)
-                    if enrich_count:
+                    if enrich_count is not None:
                         logger.info("Total items enriched %i ", enrich_count)
                 else:
                     enrich_count = enrich_items(ocean_backend, enrich_backend, events=True)
-                    if enrich_count:
+                    if enrich_count is not None:
                         logger.info("Total events enriched %i ", enrich_count)
                 if studies:
                     do_studies(enrich_backend)

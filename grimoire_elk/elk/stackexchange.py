@@ -31,6 +31,10 @@ from .enrich import Enrich, metadata
 
 from .utils import unixtime_to_datetime
 
+
+logger = logging.getLogger(__name__)
+
+
 class StackExchangeEnrich(Enrich):
 
     def get_field_unique_id(self):
@@ -124,12 +128,17 @@ class StackExchangeEnrich(Enrich):
             question = item['data']
 
             eitem["type"] = 'question'
-            eitem["author"] = question['owner']['display_name']
-            eitem["author_link"] = None
-            if 'link' in question['owner']:
-                eitem["author_link"] = question['owner']['link']
-            if 'reputation' in question['owner']:
-                eitem["author_reputation"] = question['owner']['reputation']
+            eitem["author"] = None
+            if 'owner' in question:
+                eitem["author"] = question['owner']['display_name']
+                eitem["author_link"] = None
+                if 'link' in question['owner']:
+                    eitem["author_link"] = question['owner']['link']
+                eitem["reputation"] = None
+                if 'reputation' in question['owner']:
+                    eitem["author_reputation"] = question['owner']['reputation']
+            else:
+                logger.warning("question without owner: ", question['question_id'])
 
             # data fields to copy
             copy_fields = common_fields + ['answer_count']
@@ -207,7 +216,7 @@ class StackExchangeEnrich(Enrich):
 
         url = self.elastic.index_url+'/items/_bulk'
 
-        logging.debug("Adding items to %s (in %i packs)", url, max_items)
+        logger.debug("Adding items to %s (in %i packs)", url, max_items)
 
         for item in items:
             if current >= max_items:

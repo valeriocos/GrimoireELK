@@ -29,6 +29,10 @@ from dateutil import parser
 
 from .enrich import Enrich, metadata
 
+
+logger = logging.getLogger(__name__)
+
+
 class ConfluenceEnrich(Enrich):
 
     def get_field_author(self):
@@ -125,6 +129,7 @@ class ConfluenceEnrich(Enrich):
         if page['type'] == 'page':
             if page['version']['number'] == 1:
                 eitem['type'] = 'new_page'
+        eitem['is_blogpost'] = 0
         eitem['is_'+eitem['type']] = 1
 
         if self.sortinghat:

@@ -79,9 +79,6 @@ class GitEnrich(Enrich):
     def get_field_author(self):
         return "Author"
 
-    def get_field_unique_id(self):
-        return "ocean-unique-id"
-
     def get_fields_uuid(self):
         return ["author_uuid", "committer_uuid"]
 
@@ -112,10 +109,34 @@ class GitEnrich(Enrich):
 
         return authors
 
+    def __commit_from_github(self, gh_commit):
+        """ Convert a commit in github raw format to git raw format """
+
+        raw_commit = {}
+
+        raw_commit['Author'] = gh_commit['commit']['author']['name'] + " <"
+        raw_commit['Author'] += gh_commit['commit']['author']['email'] + ">"
+        raw_commit['AuthorDate'] = gh_commit['commit']['author']['date']
+        raw_commit['Commit'] = gh_commit['commit']['committer']['name'] + " <"
+        raw_commit['Commit'] += gh_commit['commit']['committer']['email'] + ">"
+        raw_commit['CommitDate'] = gh_commit['commit']['committer']['date']
+        raw_commit['commit'] = gh_commit['sha']
+        raw_commit['files'] = []  # No direct info in github commits for files
+        raw_commit['message'] = gh_commit['commit']['message']
+        raw_commit['parents'] = gh_commit['parents']
+        raw_commit['refs'] = []  # No direct info in github commits for refs
+        # Added the commit repository field which is different from origin
+        raw_commit['repository'] = gh_commit['repository']['html_url']
+
+        return raw_commit
+
     def get_identities(self, item):
         """ Return the identities from an item.
             If the repo is in GitHub, get the usernames from GitHub. """
         identities = []
+
+        if 'Author' not in item['data']:
+            item['data'] = self.__commit_from_github(item['data'])
 
         # Temporal hack until all is integrated in mordred and p2o
         if self.CLOUDFOUNDRY_URL in item['origin']:
@@ -276,6 +297,9 @@ class GitEnrich(Enrich):
     @metadata
     def get_rich_item(self, item):
 
+        if 'Author' not in item['data']:
+            item['data'] = self.__commit_from_github(item['data'])
+
         eitem = {}
         for f in self.RAW_FIELDS_COPY:
             if f in item:
@@ -351,6 +375,9 @@ class GitEnrich(Enrich):
             eitem['github_repo'] = item['origin'].replace(GITHUB,'')
             eitem['github_repo'] = re.sub('.git$', '', eitem['github_repo'])
             eitem["url_id"] = eitem['github_repo']+"/commit/"+eitem['hash']
+            if 'repository' in item['data']:
+                eitem['repository'] = item['data']['repository']
+
 
         if 'project' in item:
             eitem['project'] = item['project']

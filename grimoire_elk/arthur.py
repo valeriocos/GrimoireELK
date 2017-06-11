@@ -511,9 +511,12 @@ def enrich_backend(url, clean, backend_name, backend_params, ocean_index=None,
             logger.info("Adding enrichment data to %s", enrich_backend.elastic.index_url)
 
             if db_sortinghat:
-                # FIXME: This step won't be done from enrich in the future
-                total_ids = load_identities(ocean_backend, enrich_backend)
-                logger.info("Total identities loaded %i ", total_ids)
+                if False:
+                    # FIXME: This step won't be done from enrich in the future
+                    total_ids = load_identities(ocean_backend, enrich_backend)
+                    logger.info("Total identities loaded %i ", total_ids)
+                else:
+                    logger.info("Don't load identities")
 
             if only_identities:
                 logger.info("Only SH identities added. Enrich not done!")

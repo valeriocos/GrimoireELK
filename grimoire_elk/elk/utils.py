@@ -72,7 +72,8 @@ def get_repository_filter(perceval_backend, perceval_backend_name,
             # Filters are always a dict
             filter_ = json.loads(filter_)
 
-    if value == '':
+    # The url for username github activiy without username is https://github.com/None/None
+    if value == '' or value == 'https://github.com/None/None':
         # Support for getting all items from a multiorigin index
         filter_ = {}
 

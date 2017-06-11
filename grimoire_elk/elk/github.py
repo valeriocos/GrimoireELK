@@ -462,7 +462,7 @@ class GitHubEnrich(Enrich):
                 'origin': item['origin'],
                 'tag': item['tag'],
                 'project': users_data[involves_data['involves_uuid']]['mozilla_project'],
-                'project_activity': users_data[involves_data['involves_uuid']]['mozilla_activity'],
+                'project_activity': int(users_data[involves_data['involves_uuid']]['mozilla_activity']),
                 'projects': users_data[involves_data['involves_uuid']]['mozilla_projects'],
                 'github_organization': issue['html_url'].rsplit("/", 4)[1],
                 'github_repository': issue['html_url'].rsplit("/", 4)[2]

@@ -25,11 +25,13 @@
 
 import json
 import logging
+import os
+import pickle
 import re
 
 from datetime import datetime
 
-from dateutil import parser
+from sortinghat.exceptions import NotFoundError
 
 from .utils import get_time_diff_days
 
@@ -343,11 +345,155 @@ class GitHubEnrich(Enrich):
 
         return rich_issue
 
-    def enrich_items(self, items):
-        total = super(GitHubEnrich, self).enrich_items(items)
+    def __read_users_data(self, users_file):
+        users_data = {}
+        # The list of users is from git and some could be externals git to github
+        users_git_no_github = 0
+        users_found = 0
+        users_not_found = 0
+        users_multigithub = 0
 
-        logger.debug("Updating GitHub users geolocations in Elastic")
-        self.geo_locations_to_es() # Update geolocations in Elastic
+        logger.debug("Loading username data from  %s", users_file)
+        import csv
+        with open(users_file, newline='') as f:
+            users = csv.reader(f, delimiter=',', quotechar='"')
+            next(users)  # Pass the headers line
+            for row in users:
+                # "Author","author_uuid: Descending","project","Commits",
+                # "Projects","Added Lines","Removed Lines","Avg. Files"
+                name = row[0]
+                uuid = row[1]
+                project = row[2]
+                project_activity = row[3]
+                # We need also the username
+                usernames = []
+                try:
+                    for identity in self.get_unique_identity(uuid).identities:
+                        if identity.source == 'github':
+                            if usernames:
+                                if identity.username not in usernames:
+                                    logger.warning('%s %s github with several usernames %s %s', name, uuid, identity.username, usernames)
+                                    users_multigithub += 1
+                                    usernames += [identity.username]
+                            else:
+                                usernames = [identity.username]
+                    users_found += 1
+                except NotFoundError:
+                    users_not_found += 1
+                    logger.error('%s %s uuid not found in SH db', name, uuid)
+
+                if not usernames:
+                    users_git_no_github += 1
+                    # logger.debug('%s %s github usernames not found', name, uuid)
+
+                if uuid not in users_data:
+                    users_data[uuid] = {
+                        "name": name,
+                        "usernames": usernames,
+                        "mozilla_project": project,
+                        "mozilla_activity": project_activity,
+                        "mozilla_projects": [project]
+                    }
+                else:
+                    users_data[uuid]['mozilla_projects'] += [project]
+                    users_data[uuid]['usernames'] = usernames
+                    if users_data[uuid]['mozilla_activity'] > project_activity:
+                        users_data[uuid]['mozilla_activity'] = project_activity
+                        users_data[uuid]['mozilla_project'] = project
+
+        total_users = len(users_data.keys())
+        logger.debug("Total users in file: %i", total_users)
+        logger.debug("Total users found ok: %i", users_found)
+        logger.debug("Total users not found : %i", users_not_found)
+        logger.debug("Total users from git not in github: %i", users_git_no_github)
+        logger.debug("Total users from github : %i", total_users-users_git_no_github-users_not_found)
+        logger.debug("Total users with several github usernames: %i", users_multigithub)
+
+        return users_data
+
+    def enrich_users_activity(self, ocean_backend):
+        # The final item enriched format is
+        # issue: id, date, involves+name username en github,
+        # main Mozilla project with git activity, list of Mozilla projects,
+        # github organization from url, repository
+
+        def build_involves(username, users_data):
+            involves = {
+                "involves_uuid": None,
+                "involves_name": None,
+                "involves_username": username
+            }
+            for uuid in users_data:
+                if username in users_data[uuid]['usernames']:
+                    involves['involves_uuid'] = uuid
+                    involves['involves_name'] = users_data[uuid]['name']
+                    break
+            return involves
+
+        # Firs step is to load the identities info we already has
+        EXTRA_USER_NAME_INFO = 'git_top_authors.csv'
+
+        users_data = {}
+        # Try to recover from a previous pickle file created
+        user_pickle_file = "users_data.pickle"
+        if os.path.isfile(user_pickle_file):
+            with open(user_pickle_file, "rb") as fpick:
+                users_data = pickle.load(fpick)
+        else:
+            users_data = self.__read_users_data(EXTRA_USER_NAME_INFO)
+            with open(user_pickle_file, "wb") as fpick:
+                pickle.dump(users_data, fpick, protocol=pickle.HIGHEST_PROTOCOL)
+
+        for item in ocean_backend.fetch():
+            issue = item['data']
+            grimoire_fields = self.get_grimoire_fields(issue['created_at'], "issue")
+            item[self.get_field_date()] = grimoire_fields[self.get_field_date()]
+            # In raw data for activty we don't have assignee_data and user_data
+            # roles = ['assignee', 'user']
+            # sh_fields = self.get_item_sh(item, roles)
+
+            # In origin we have the username, and the uuids in users_data
+            # https://github.com/carols10cents/None/None
+            involves_username = item['origin'].split('/')[3]
+            involves_data = build_involves(involves_username, users_data)
+
+            eitem = {
+                'id': item['uuid'],
+                'origin': item['origin'],
+                'tag': item['tag'],
+                'project': users_data[involves_data['involves_uuid']]['mozilla_project'],
+                'project_activity': users_data[involves_data['involves_uuid']]['mozilla_activity'],
+                'projects': users_data[involves_data['involves_uuid']]['mozilla_projects'],
+                'github_organization': issue['html_url'].rsplit("/", 4)[1],
+                'github_repository': issue['html_url'].rsplit("/", 4)[2]
+            }
+
+            # eitem.update(sh_fields)
+            eitem.update(grimoire_fields)
+            eitem.update(involves_data)
+
+            yield eitem
+
+
+    def enrich_items(self, ocean_backend):
+
+        total = 0
+
+        items = ocean_backend.fetch()
+        # Check the origin of the first one to define the kind of enrichment
+        try:
+            item = next(items)
+        except StopIteration:
+            return total
+        if item['origin'].endswith('/None/None'):
+            logging.info("Enriching user activity in GitHub for issues")
+            eitems = self.enrich_users_activity(ocean_backend)
+            total = self.elastic.bulk_upload_sync(eitems, 'id')
+        else:
+            total = super(GitHubEnrich, self).enrich_items(ocean_backend)
+
+            logger.debug("Updating GitHub users geolocations in Elastic")
+            self.geo_locations_to_es() # Update geolocations in Elastic
 
         return total
 

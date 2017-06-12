@@ -472,8 +472,13 @@ class GitHubEnrich(Enrich):
             eitem.update(grimoire_fields)
             eitem.update(involves_data)
 
-            yield eitem
+            eitem['pull_request'] = 1
+            eitem['issue'] = 0
+            if not 'head' in issue.keys() and not 'pull_request' in issue.keys():
+                eitem['pull_request'] = 0
+                eitem['issue'] = 1
 
+            yield eitem
 
     def enrich_items(self, ocean_backend):
 

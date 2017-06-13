@@ -348,10 +348,10 @@ class GitHubEnrich(Enrich):
     def __read_users_data(self, users_file):
         users_data = {}
         # The list of users is from git and some could be externals git to github
-        users_git_no_github = 0
-        users_found = 0
-        users_not_found = 0
-        users_multigithub = 0
+        users_git_no_github = []
+        users_data_found = 0
+        users_not_found = []
+        users_multigithub = []
 
         logger.debug("Loading username data from  %s", users_file)
         import csv
@@ -373,17 +373,20 @@ class GitHubEnrich(Enrich):
                             if usernames:
                                 if identity.username not in usernames:
                                     logger.warning('%s %s github with several usernames %s %s', name, uuid, identity.username, usernames)
-                                    users_multigithub += 1
+                                    if uuid not in users_multigithub:
+                                        users_multigithub += [uuid]
                                     usernames += [identity.username]
                             else:
                                 usernames = [identity.username]
-                    users_found += 1
+                    users_data_found += 1
                 except NotFoundError:
-                    users_not_found += 1
+                    if uuid not in users_not_found:
+                        users_not_found += [uuid]
                     logger.error('%s %s uuid not found in SH db', name, uuid)
 
                 if not usernames:
-                    users_git_no_github += 1
+                    if uuid not in users_git_no_github:
+                        users_git_no_github += [uuid]
                     # logger.debug('%s %s github usernames not found', name, uuid)
 
                 if uuid not in users_data:
@@ -391,24 +394,25 @@ class GitHubEnrich(Enrich):
                         "name": name,
                         "usernames": usernames,
                         "mozilla_project": project,
-                        "mozilla_activity": project_activity,
+                        "mozilla_commits": project_activity,
                         "mozilla_projects": [project]
                     }
                 else:
                     users_data[uuid]['mozilla_projects'] += [project]
                     users_data[uuid]['usernames'] = usernames
-                    if users_data[uuid]['mozilla_activity'] > project_activity:
-                        users_data[uuid]['mozilla_activity'] = project_activity
+                    if users_data[uuid]['mozilla_commits'] > project_activity:
+                        users_data[uuid]['mozilla_commits'] = project_activity
                         users_data[uuid]['mozilla_project'] = project
 
         total_users = len(users_data.keys())
         logger.debug("Total users in file: %i", total_users)
-        logger.debug("Total users found ok: %i", users_found)
-        logger.debug("Total users not found : %i", users_not_found)
-        logger.debug("Total users from git not in github: %i", users_git_no_github)
-        logger.debug("Total users from github : %i", total_users-users_git_no_github-users_not_found)
-        logger.debug("Total users with several github usernames: %i", users_multigithub)
+        logger.debug("Total users data (one line per repository) found ok: %i", users_data_found)
+        logger.debug("Total users not found : %i", len(users_not_found))
+        logger.debug("Total users from git not in github: %i", len(users_git_no_github))
+        logger.debug("Total users from github : %i", total_users-len(users_git_no_github)-len(users_not_found))
+        logger.debug("Total users with several github usernames: %i", len(users_multigithub))
 
+        raise
         return users_data
 
     def enrich_users_activity(self, ocean_backend):
@@ -436,7 +440,8 @@ class GitHubEnrich(Enrich):
         users_data = {}
         # Try to recover from a previous pickle file created
         user_pickle_file = "users_data.pickle"
-        if os.path.isfile(user_pickle_file):
+        # In production mode don't try to load a pickle file with old data
+        if os.path.isfile(user_pickle_file) and False:
             with open(user_pickle_file, "rb") as fpick:
                 users_data = pickle.load(fpick)
         else:
@@ -457,16 +462,21 @@ class GitHubEnrich(Enrich):
             involves_username = item['origin'].split('/')[3]
             involves_data = build_involves(involves_username, users_data)
 
-            eitem = {
-                'id': item['uuid'],
-                'origin': item['origin'],
-                'tag': item['tag'],
-                'project': users_data[involves_data['involves_uuid']]['mozilla_project'],
-                'project_activity': int(users_data[involves_data['involves_uuid']]['mozilla_activity']),
-                'projects': users_data[involves_data['involves_uuid']]['mozilla_projects'],
-                'github_organization': issue['html_url'].rsplit("/", 4)[1],
-                'github_repository': issue['html_url'].rsplit("/", 4)[2]
-            }
+            try:
+                eitem = {
+                    'id': item['uuid'],
+                    'origin': item['origin'],
+                    'tag': item['tag'],
+                    'project': users_data[involves_data['involves_uuid']]['mozilla_project'],
+                    'project_commits': int(users_data[involves_data['involves_uuid']]['mozilla_commits']),
+                    'projects': users_data[involves_data['involves_uuid']]['mozilla_projects'],
+                    'github_organization': issue['html_url'].rsplit("/", 4)[1],
+                    'github_repository': issue['html_url'].rsplit("/", 4)[2]
+                }
+            except Exception as ex:
+                # There are github usernames in the raw index from old collections
+                # that are not in our curret users_data
+                continue
 
             # eitem.update(sh_fields)
             eitem.update(grimoire_fields)

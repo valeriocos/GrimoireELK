@@ -33,8 +33,7 @@ from datetime import datetime
 
 from sortinghat.exceptions import NotFoundError
 
-from .utils import get_time_diff_days
-
+from .utils import get_time_diff_days, unixtime_to_datetime
 from .enrich import Enrich, metadata
 
 
@@ -360,11 +359,13 @@ class GitHubEnrich(Enrich):
             next(users)  # Pass the headers line
             for row in users:
                 # "Author","author_uuid: Descending","project","Commits",
-                # "Projects","Added Lines","Removed Lines","Avg. Files"
+                # "Projects","Max author_date","Min author_date"
                 name = row[0]
                 uuid = row[1]
                 project = row[2]
                 project_activity = row[3]
+                max_author_date = row[5]
+                min_author_date = row[6]
                 # We need also the username
                 usernames = []
                 try:
@@ -395,7 +396,9 @@ class GitHubEnrich(Enrich):
                         "usernames": usernames,
                         "mozilla_project": project,
                         "mozilla_commits": project_activity,
-                        "mozilla_projects": [project]
+                        "mozilla_projects": [project],
+                        "mozilla_commits_max_author_date": max_author_date,
+                        "mozilla_commits_min_author_date": min_author_date
                     }
                 else:
                     users_data[uuid]['mozilla_projects'] += [project]
@@ -403,6 +406,10 @@ class GitHubEnrich(Enrich):
                     if users_data[uuid]['mozilla_commits'] > project_activity:
                         users_data[uuid]['mozilla_commits'] = project_activity
                         users_data[uuid]['mozilla_project'] = project
+                    if users_data[uuid]['mozilla_commits_max_author_date'] < max_author_date:
+                        users_data[uuid]['mozilla_commits_max_author_date'] = max_author_date
+                    if users_data[uuid]['mozilla_commits_min_author_date'] > min_author_date:
+                        users_data[uuid]['mozilla_commits_min_author_date'] = min_author_date
 
         total_users = len(users_data.keys())
         logger.debug("Total users in file: %i", total_users)
@@ -412,7 +419,6 @@ class GitHubEnrich(Enrich):
         logger.debug("Total users from github : %i", total_users-len(users_git_no_github)-len(users_not_found))
         logger.debug("Total users with several github usernames: %i", len(users_multigithub))
 
-        raise
         return users_data
 
     def enrich_users_activity(self, ocean_backend):
@@ -477,6 +483,12 @@ class GitHubEnrich(Enrich):
                 # There are github usernames in the raw index from old collections
                 # that are not in our curret users_data
                 continue
+
+            # date fields
+            max_date = int(users_data[involves_data['involves_uuid']]['mozilla_commits_max_author_date'])
+            eitem['max_date_author_commits'] = unixtime_to_datetime(max_date/1000).isoformat()
+            min_date = int(users_data[involves_data['involves_uuid']]['mozilla_commits_min_author_date'])
+            eitem['min_date_author_commits'] = unixtime_to_datetime(min_date/1000).isoformat()
 
             # eitem.update(sh_fields)
             eitem.update(grimoire_fields)

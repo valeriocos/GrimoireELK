@@ -85,37 +85,58 @@ def fetch_mongodb_all(host=None, port=None):
                 for item in fetch_mongodb_collection(collection_name, client=client):
                     yield item
 
-def enrich_ossminer_item(item):
-    # Given a ossminer item enrich it to be used in Kibana
+def extract_metrics(item, item_meta):
+    # Extract metric names and values from an item
 
-    # Find the metric value field
-    common_fields = ['__date', '_type', '_id', '__datetime', 'bugData', 'newsgroups']
-    value_fields = list(set(item.keys()) - set(common_fields))
-    if len(value_fields) == 1:
-        item['metric_value'] = item[value_fields[0]]
-    elif len(value_fields) == 2:
-        # We also the cumulative metric
-        for field in value_fields:
-            value = item[field]
-            if not isinstance(item[field], (int, float)):
-                value = None
-            if 'cumulative' in field:
-                item['metric_es_value_cumulative'] = value
-            else:
-                item['metric_es_value'] = value
-    else:
-        logging.error("Can't find the metric value field %s", value_fields)
+    item_metrics = []
 
-    if '__datetime' in item:
-        item['datetime'] = item['__datetime'].isoformat()
-        item['__datetime'] = item['__datetime'].isoformat()
-    if '__date' in item:
-        item['date'] = item['__date']
-    # Field [_id] is a metadata field and cannot be added inside a document.
-    item['mongo_id'] = item.pop('_id')  # The _id can not in the data in ES
-    item['mongo_type'] = item.pop('_type')  # The _id can not in the data in ES
+    no_value_fields = ['__date', '_type', '_id', '__datetime', 'bugs',
+                       'bugData', 'bugTrackers', 'newsgroups']
+    value_fields = list(set(item.keys()) - set(no_value_fields))
 
-    return item
+    for field in value_fields:
+        item_metric = {}
+        value = item[field]
+        item_metric['metric_es_name'] = field
+        if not isinstance(item[field], (int, float)):
+            value = None
+        item_metric['metric_es_value'] = value
+        item_metric['metric_es_cumulative'] = 0
+        if 'cumulative' in field:
+            item_metric['metric_es_cumulative'] = 1
+
+        item_metrics.append(item_metric)
+
+    # logging.info("Metrics found: %s", item_metrics)
+
+    return item_metrics
+
+
+def enrich_ossmeter_item(item, item_meta):
+    # Given a ossmeter item enrich it to be used in Kibana
+
+    # A raw item from OSSMeter could generate several enriched items, one for
+    # each metric
+    eitems = []
+
+    for metrics in extract_metrics(item, item_meta):
+        eitem = {}
+        eitem.update(metrics)
+        # It is useful to have all item fields for debugging
+        eitem.update(item)
+
+        if '__datetime' in item:
+            eitem['datetime'] = eitem['__datetime'].isoformat()
+            eitem['__datetime'] = eitem['__datetime'].isoformat()
+        if '__date' in item:
+            eitem['date'] = item['__date']
+        eitem['mongo_id'] = eitem.pop('_id')
+        eitem['mongo_type'] = eitem.pop('_type')
+        eitem['id'] = eitem['mongo_id'] + "_" + eitem['metric_es_name']
+
+        eitems.append(eitem)
+
+    return eitems
 
 
 def fetch_mongodb_collection(collection_str, host=None, port=None, client=None):
@@ -150,9 +171,11 @@ def fetch_mongodb_collection(collection_str, host=None, port=None, client=None):
         collection = client[collection_str]
 
     for item in collection.find():
-        item = enrich_ossminer_item(item)
-        item.update(item_meta)
-        yield item
+        enrich_items = enrich_ossmeter_item(item, item_meta)
+        for eitem in enrich_items:
+            eitem.update(item_meta)
+            # print(eitem)
+            yield eitem
 
 if __name__ == '__main__':
 
@@ -177,4 +200,4 @@ if __name__ == '__main__':
 
     if mongo_items:
         logging.info("Loading collections in Elasticsearch")
-        elastic.bulk_upload_sync(mongo_items, "mongo_id")
+        elastic.bulk_upload_sync(mongo_items, "id")

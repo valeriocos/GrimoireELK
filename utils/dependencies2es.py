@@ -77,6 +77,19 @@ def uuid(*args):
 
     return uuid_sha1
 
+def find_version(dependency):
+
+    version = None
+
+    if len(dependency) == 3:
+        if 'lower-version' in dependency[2]:
+            version = dependency[2]['lower-version'] + ":" + dependency[2]['upper-version']
+        elif 'version' in dependency[2]:
+            version = dependency[2]['version']
+
+    return version
+
+
 def get_unique_id(dependency):
     # Sample dependency
     # [
@@ -90,14 +103,10 @@ def get_unique_id(dependency):
     #         "visibility": "private"
     #     }
     # ]
-    if len(dependency) == 3:
-        if 'lower-version' in dependency[2]:
-            uuid_val = uuid(dependency[0], dependency[1], dependency[2]['lower-version'],
-                            dependency[2]['upper-version'])
-        elif 'version' in dependency[2]:
-            uuid_val = uuid(dependency[0], dependency[1], dependency[2]['version'])            
+    version = find_version(dependency)
+    if version:
+        uuid_val = uuid(dependency[0], dependency[1], version)
     else:
-        # In some cases the extra info with versions is not included
         uuid_val = uuid(dependency[0], dependency[1])
 
     return uuid_val
@@ -107,6 +116,10 @@ def enrich_item(item):
 
     eitem['origin'] = item[0]
     eitem['dependency'] = item[1]
+    version = find_version(item)
+    eitem['dependency_ver'] = None
+    if version:
+        eitem['dependency_ver'] = item[1] + "_" + version
     eitem['uuid'] = get_unique_id(item)
 
     return eitem

@@ -88,22 +88,51 @@ def fetch_mongodb_all(host=None, port=None):
 def extract_metrics(item, item_meta):
     # Extract metric names and values from an item
 
+    def create_item_metric(field, value):
+        item_metric = {}
+        item_metric['metric_es_name'] = field
+        item_metric['metric_es_value'] = value
+        item_metric['metric_es_cumulative'] = 0
+        item_metric['metric_es_average'] = 0
+        if 'cumulative' in field:
+            item_metric['metric_es_cumulative'] = 1
+        if 'avg' in field:
+            item_metric['metric_es_average'] = 1
+
+        return item_metric
+
+
+
     item_metrics = []
 
     no_value_fields = ['__date', '_type', '_id', '__datetime', 'bugs',
-                       'bugData', 'bugTrackers', 'newsgroups']
+                       'bugData', 'bugTrackers', 'newsgroups',
+                       'bugTrackerId', 'percentage']
     value_fields = list(set(item.keys()) - set(no_value_fields))
 
     for field in value_fields:
-        item_metric = {}
         value = item[field]
-        item_metric['metric_es_name'] = field
         if not isinstance(item[field], (int, float)):
             value = None
-        item_metric['metric_es_value'] = value
-        item_metric['metric_es_cumulative'] = 0
-        if 'cumulative' in field:
-            item_metric['metric_es_cumulative'] = 1
+            if isinstance(item[field], list):
+                for subitem in item[field]:
+                    subitem_metric_name = None
+                    subitem_metric_value = None
+                    subvalue_fields = list(set(subitem.keys()) - set(no_value_fields))
+                    # numberOfBugs 5
+                    # severityLevel enhancement
+                    for subfield in subvalue_fields:
+                        # Just support number metrics
+                        if not isinstance(subitem[subfield], (int, float)):
+                            # This must be the name of the subitem_metric_value
+                            subitem_metric_name = field + "_" + subitem[subfield]
+                        else:
+                            subitem_metric_value = subitem[subfield]
+                    # print(subitem_metric_name, subitem_metric_value)
+                    item_metric = create_item_metric(subitem_metric_name, subitem_metric_value)
+                    item_metrics.append(item_metric)
+
+        item_metric = create_item_metric(field, value)
 
         item_metrics.append(item_metric)
 

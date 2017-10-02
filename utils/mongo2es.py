@@ -96,47 +96,45 @@ def extract_metrics(item, item_meta):
         item_metric['metric_es_average'] = 0
         if 'cumulative' in field:
             item_metric['metric_es_cumulative'] = 1
-        if 'avg' in field:
+        if 'avg' in field or 'average' in field:
             item_metric['metric_es_average'] = 1
 
         return item_metric
 
+    def find_metric_prefix(item, value_fields):
+        metric_prefix = None
+
+        for field in value_fields:
+            if isinstance(item[field], str):
+                # This is the name of the metric prefix: 'severityLevel': 'normal'}
+                metric_prefix = item[field]
+
+        return metric_prefix
 
 
     item_metrics = []
 
     no_value_fields = ['__date', '_type', '_id', '__datetime', 'bugs',
-                       'bugData', 'bugTrackers', 'newsgroups',
+                       'bugData', 'bugTrackers', 'newsgroups', 'newsgroupName',
                        'bugTrackerId', 'percentage']
     value_fields = list(set(item.keys()) - set(no_value_fields))
 
+    metric_prefix = find_metric_prefix(item, value_fields)
+
     for field in value_fields:
-        value = item[field]
-        if not isinstance(item[field], (int, float)):
-            value = None
-            if isinstance(item[field], list):
-                for subitem in item[field]:
-                    subitem_metric_name = None
-                    subitem_metric_value = None
-                    subvalue_fields = list(set(subitem.keys()) - set(no_value_fields))
-                    # numberOfBugs 5
-                    # severityLevel enhancement
-                    for subfield in subvalue_fields:
-                        # Just support number metrics
-                        if not isinstance(subitem[subfield], (int, float)):
-                            # This must be the name of the subitem_metric_value
-                            subitem_metric_name = field + "_" + subitem[subfield]
-                        else:
-                            subitem_metric_value = subitem[subfield]
-                    # print(subitem_metric_name, subitem_metric_value)
-                    item_metric = create_item_metric(subitem_metric_name, subitem_metric_value)
-                    item_metrics.append(item_metric)
+        if isinstance(item[field], list):
+            # In the list items we can have metrics
+            for subitem in item[field]:
+                subitem_metrics = extract_metrics(subitem, item_meta)
+                item_metrics += subitem_metrics
+        elif isinstance(item[field], (int, float)):
+            value = item[field]
+            item_metric = create_item_metric(field, value)
+            if metric_prefix:
+                item_metric['metric_es_name'] = metric_prefix + "_" + item_metric['metric_es_name']
+            item_metrics.append(item_metric)
 
-        item_metric = create_item_metric(field, value)
-
-        item_metrics.append(item_metric)
-
-    # logging.info("Metrics found: %s", item_metrics)
+    # logging.debug("Metrics found: %s", item_metrics)
 
     return item_metrics
 
@@ -148,9 +146,9 @@ def enrich_ossmeter_item(item, item_meta):
     # each metric
     eitems = []
 
-    for metrics in extract_metrics(item, item_meta):
+    for metric in extract_metrics(item, item_meta):
         eitem = {}
-        eitem.update(metrics)
+        eitem.update(metric)
         # It is useful to have all item fields for debugging
         eitem.update(item)
 

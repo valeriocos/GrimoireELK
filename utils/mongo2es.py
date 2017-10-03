@@ -25,6 +25,7 @@
 #
 
 import argparse
+import hashlib
 import logging
 
 from pprint import pprint
@@ -49,6 +50,37 @@ def get_params():
         parser.error("--collection or --all-collections needed")
 
     return args
+
+# From perceval
+def uuid(*args):
+    """Generate a UUID based on the given parameters.
+
+    The UUID will be the SHA1 of the concatenation of the values
+    from the list. The separator bewteedn these values is ':'.
+    Each value must be a non-empty string, otherwise, the function
+    will raise an exception.
+
+    :param *args: list of arguments used to generate the UUID
+
+    :returns: a universal unique identifier
+
+    :raises ValueError: when anyone of the values is not a string,
+        is empty or `None`.
+    """
+    def check_value(v):
+        if not isinstance(v, str):
+            raise ValueError("%s value is not a string instance" % str(v))
+        elif not v:
+            raise ValueError("value cannot be None or empty")
+        else:
+            return v
+
+    s = ':'.join(map(check_value, args))
+
+    sha1 = hashlib.sha1(s.encode('utf-8', errors='surrogateescape'))
+    uuid_sha1 = sha1.hexdigest()
+
+    return uuid_sha1
 
 def connect_to_mongo(host=None, port=None):
     """ Return a connection to the mongo server in host and port """
@@ -159,7 +191,7 @@ def enrich_ossmeter_item(item, item_meta):
             eitem['date'] = item['__date']
         eitem['mongo_id'] = eitem.pop('_id')
         eitem['mongo_type'] = eitem.pop('_type')
-        eitem['id'] = eitem['mongo_id'] + "_" + eitem['metric_es_name']
+        eitem['id'] = uuid(eitem['mongo_id'], eitem['metric_es_name'])
 
         eitems.append(eitem)
 

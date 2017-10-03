@@ -123,6 +123,13 @@ def extract_metrics(item, item_meta):
 
     value_formatted_pattern = 'Formatted'
 
+    def find_topic():
+        """ Find the topic label for an item """
+        topic = None
+        if item_meta['metric_name'] == "topics" and 'label' in item:
+            topic = item['label']
+
+        return topic
 
     def create_item_metric(field, value):
         # The metrics could be computed as cumulative, average or single sample
@@ -134,6 +141,10 @@ def extract_metrics(item, item_meta):
             item_metric['metric_es_compute'] = 'cumulative'
         if 'avg' in field or 'average' in field:
             item_metric['metric_es_compute'] = 'average'
+        # For the topic metrics we get the topic label and add it as a field
+        topic = find_topic()
+        if topic:
+            item_metric['topic'] = find_topic()
 
         return item_metric
 
@@ -143,6 +154,9 @@ def extract_metrics(item, item_meta):
         for field in value_fields:
             if value_formatted_pattern in field:
                 # It is a formatted value, not a string with the metric name
+                continue
+            if find_topic():
+                # Topics are a special case and will be added as an extra field
                 continue
             if isinstance(item[field], str):
                 # This is the name of the metric prefix: 'severityLevel': 'normal'}

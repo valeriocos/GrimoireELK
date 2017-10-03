@@ -216,6 +216,9 @@ def enrich_ossmeter_item(item, item_meta):
         eitem['mongo_id'] = eitem.pop('_id')
         eitem['mongo_type'] = eitem.pop('_type')
         eitem['id'] = uuid(eitem['mongo_id'], eitem['metric_es_name'])
+        if 'topic' in eitem:
+            eitem['id'] = uuid(eitem['mongo_id'], eitem['metric_es_name'],
+                               eitem['topic'])
 
         eitems.append(eitem)
 

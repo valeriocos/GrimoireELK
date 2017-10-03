@@ -110,6 +110,7 @@ def fetch_mongodb_all(host=None, port=None):
 
     # Find all OSSMeter collections in mongo
     for db in client.database_names():
+        logging.info('Loading items from database %s', db)
         for collection in client[db].collection_names():
             collection_name = db + '.' + collection
             if is_ossmeter_historic_collection(collection_name):
@@ -119,6 +120,9 @@ def fetch_mongodb_all(host=None, port=None):
 
 def extract_metrics(item, item_meta):
     # Extract metric names and values from an item
+
+    value_formatted_pattern = 'Formatted'
+
 
     def create_item_metric(field, value):
         # The metrics could be computed as cumulative, average or single sample
@@ -137,6 +141,9 @@ def extract_metrics(item, item_meta):
         metric_prefix = None
 
         for field in value_fields:
+            if value_formatted_pattern in field:
+                # It is a formatted value, not a string with the metric name
+                continue
             if isinstance(item[field], str):
                 # This is the name of the metric prefix: 'severityLevel': 'normal'}
                 metric_prefix = item[field]
@@ -154,6 +161,9 @@ def extract_metrics(item, item_meta):
     metric_prefix = find_metric_prefix(item, value_fields)
 
     for field in value_fields:
+        if value_formatted_pattern in field:
+            # We don't want string formatted values
+            continue
         if isinstance(item[field], list):
             # In the list items we can have metrics
             for subitem in item[field]:
@@ -233,7 +243,6 @@ def fetch_mongodb_collection(collection_str, host=None, port=None, client=None):
         enrich_items = enrich_ossmeter_item(item, item_meta)
         for eitem in enrich_items:
             eitem.update(item_meta)
-            # print(eitem)
             yield eitem
 
 if __name__ == '__main__':

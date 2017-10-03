@@ -113,7 +113,7 @@ def fetch_mongodb_all(host=None, port=None):
         for collection in client[db].collection_names():
             collection_name = db + '.' + collection
             if is_ossmeter_historic_collection(collection_name):
-                logging.debug('Loading items from %s', collection_name)
+                logging.info('Loading items from %s', collection_name)
                 for item in fetch_mongodb_collection(collection_name, client=client):
                     yield item
 
@@ -121,15 +121,15 @@ def extract_metrics(item, item_meta):
     # Extract metric names and values from an item
 
     def create_item_metric(field, value):
+        # The metrics could be computed as cumulative, average or single sample
         item_metric = {}
         item_metric['metric_es_name'] = field
         item_metric['metric_es_value'] = value
-        item_metric['metric_es_cumulative'] = 0
-        item_metric['metric_es_average'] = 0
+        item_metric['metric_es_compute'] = 'sample'
         if 'cumulative' in field:
-            item_metric['metric_es_cumulative'] = 1
+            item_metric['metric_es_compute'] = 'cumulative'
         if 'avg' in field or 'average' in field:
-            item_metric['metric_es_average'] = 1
+            item_metric['metric_es_compute'] = 'average'
 
         return item_metric
 

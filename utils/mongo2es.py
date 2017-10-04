@@ -137,9 +137,9 @@ def extract_metrics(item, item_meta):
         item_metric['metric_es_name'] = field
         item_metric['metric_es_value'] = value
         item_metric['metric_es_compute'] = 'sample'
-        if 'cumulative' in field:
+        if 'cumulative' in field.lower():
             item_metric['metric_es_compute'] = 'cumulative'
-        if 'avg' in field or 'average' in field:
+        if 'avg' in field.lower() or 'average' in field.lower():
             item_metric['metric_es_compute'] = 'average'
         # For the topic metrics we get the topic label and add it as a field
         topic = find_topic()

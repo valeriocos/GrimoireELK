@@ -39,6 +39,7 @@ def get_params():
                                      description="Import mongo items in ElasticSearch")
     parser.add_argument("-a", "--all-collections", action='store_true', help="Process all MongoDB Collections")
     parser.add_argument("-c", "--collection", help="MongoDB Collection")
+    parser.add_argument("--project", help="CROSSMINER Project Collection")
     parser.add_argument("-m", "--mongo-host", default='localhost', help="MongoDB Host")
     parser.add_argument("-p", "--mongo-port", default='27017', type=int, help="MongoDB Port")
     parser.add_argument("-e", "--elastic-url", required=True, help="ElasticSearch URL")
@@ -46,7 +47,7 @@ def get_params():
     parser.add_argument('-g', '--debug', dest='debug', action='store_true')
     args = parser.parse_args()
 
-    if not args.collection and not args.all_collections:
+    if not args.collection and not args.all_collections and not args.project:
         parser.error("--collection or --all-collections needed")
 
     return args
@@ -94,15 +95,29 @@ def connect_to_mongo(host=None, port=None):
     return client
 
 def is_ossmeter_historic_collection(collection):
-    # Check if a collection is an OSSMeter one
+    # Check if a collection is an OSSMeter historic one
     # Sample: modeling-graphiti.historic.newsgroups.articles
 
-    is_ossmeter = False
+    is_historic = False
 
     if len(collection.split(".")) == 4:
-        is_ossmeter = True
+        if collection.split(".")[1] == 'historic':
+            is_historic = True
 
-    return is_ossmeter
+    return is_historic
+
+def is_ossmeter_project_collection(project, collection):
+    # Check if a collection is an OSSMeter one from project
+    # Sample: perceval.historic.bugs.bugs
+
+    is_project = False
+
+    if is_ossmeter_historic_collection(collection):
+        if project == collection.split(".")[0]:
+            is_project = True
+
+    return is_project
+
 
 def fetch_mongodb_all(host=None, port=None):
     logging.info("Searching for all OSSMeter metrics collections")
@@ -117,6 +132,24 @@ def fetch_mongodb_all(host=None, port=None):
                 logging.info('Loading items from %s', collection_name)
                 for item in fetch_mongodb_collection(collection_name, client=client):
                     yield item
+
+def fetch_mongodb_project(project, host=None, port=None):
+    logging.info("Searching OSSMeter metrics collections for project %s", project)
+    client = connect_to_mongo(host, port)
+
+    # Find all OSSMeter collections in mongo
+    for db in client.database_names():
+        logging.info('Loading items from database %s', db)
+        for collection in client[db].collection_names():
+            collection_name = db + '.' + collection
+            if not is_ossmeter_historic_collection(collection_name):
+                continue
+            if not is_ossmeter_project_collection(project, collection_name):
+                continue
+            logging.info('Loading items from %s', collection_name)
+            for item in fetch_mongodb_collection(collection_name, client=client):
+                yield item
+
 
 def extract_metrics(item, item_meta):
     # Extract metric names and values from an item
@@ -264,22 +297,24 @@ def fetch_mongodb_collection(collection_str, host=None, port=None, client=None):
 
 if __name__ == '__main__':
 
-    args = get_params()
+    ARGS = get_params()
 
-    if args.debug:
+    if ARGS.debug:
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(message)s')
         logging.debug("Debug mode activated")
     else:
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
-    logging.info("Importing items from %s to %s/%s", args.collection, args.elastic_url, args.index)
+    logging.info("Importing items from %s to %s/%s", ARGS.collection, ARGS.elastic_url, ARGS.index)
 
-    elastic = ElasticSearch(args.elastic_url, args.index)
+    elastic = ElasticSearch(ARGS.elastic_url, ARGS.index)
 
-    if args.collection:
-        mongo_items = fetch_mongodb_collection(args.collection, args.mongo_host, args.mongo_port)
-    elif args.all_collections:
-        mongo_items = fetch_mongodb_all(args.mongo_host, args.mongo_port)
+    if ARGS.collection:
+        mongo_items = fetch_mongodb_collection(ARGS.collection, ARGS.mongo_host, ARGS.mongo_port)
+    elif ARGS.project:
+        mongo_items = fetch_mongodb_project(ARGS.project, ARGS.mongo_host, ARGS.mongo_port)
+    elif ARGS.all_collections:
+        mongo_items = fetch_mongodb_all(ARGS.mongo_host, ARGS.mongo_port)
     else:
         raise RuntimeError('Collection to be processed not provided')
 

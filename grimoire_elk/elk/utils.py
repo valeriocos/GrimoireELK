@@ -43,6 +43,8 @@ logger = logging.getLogger(__name__)
 def get_repository_filter(perceval_backend, perceval_backend_name,
                           term=False):
     """ Get the filter needed for get the items in a repository """
+    from .github import GITHUB
+
     filter_ = {}
 
     if not perceval_backend:
@@ -73,8 +75,9 @@ def get_repository_filter(perceval_backend, perceval_backend_name,
             # Filters are always a dict
             filter_ = json.loads(filter_)
 
-    if value == '':
+    if value in ['', GITHUB + '/']:
         # Support for getting all items from a multiorigin index
+        # In GitHub we receive GITHUB + '/', the site url without org and repo
         filter_ = {}
 
     return filter_
@@ -112,9 +115,10 @@ def unixtime_to_datetime(ut):
     dt = dt.replace(tzinfo=tz.tzutc())
     return dt
 
-def grimoire_con(insecure=True, conn_retries=12):
+def grimoire_con(insecure=True, conn_retries=21):
     conn = requests.Session()
-    # conn_retries = 12  # 800s
+    # {backoff factor} * (2 ^ ({number of total retries} - 1))
+    # conn_retries = 21  # 209715.2 = 2.4d
     # Retry when there are errors in HTTP connections
     retries = Retry(connect=conn_retries, read=8, redirect=5, backoff_factor=0.2,
                     method_whitelist=False)

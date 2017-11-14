@@ -52,19 +52,24 @@ class MBoxEnrich(Enrich):
 
     def get_elastic_mappings(self):
 
+        fielddata = ''
+        if self.kibiter_version == '5':
+            fielddata = ', "fielddata": true'
+
         mapping = """
         {
             "properties": {
                  "Subject_analyzed": {
                    "type": "string",
                    "index":"analyzed"
+                   %s
                  },
                  "body": {
                    "type": "string",
                    "index":"analyzed"
                  }
            }
-        } """
+        } """ % fielddata
 
         return {"items":mapping}
 

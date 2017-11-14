@@ -40,10 +40,8 @@ class SlackEnrich(Enrich):
 
     def get_elastic_mappings(self):
 
-        from grimoire_elk.utils import kibiter_version
-
         fielddata = ''
-        if kibiter_version == '5':
+        if self.kibiter_version == '5':
             fielddata = ', "fielddata": true'
 
 
@@ -122,7 +120,7 @@ class SlackEnrich(Enrich):
         eitem['text_analyzed'] = eitem['text']
 
         eitem['number_attachs'] = 0
-        if 'attachments' in message:
+        if 'attachments' in message and message['attachments']:
             eitem['number_attachs'] = len(message['attachments'])
 
         eitem['reaction_count'] = 0

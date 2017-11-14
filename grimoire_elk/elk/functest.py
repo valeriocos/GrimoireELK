@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 class FunctestEnrich(Enrich):
 
+    BOOST_PROJECTS = ['functest', 'storperf', 'vsperf', 'bottlenecks', 'qtip', 'yardstick']
+
     def get_identities(self, item):
         """ Return the identities from an item """
         identities = []
@@ -75,7 +77,9 @@ class FunctestEnrich(Enrich):
 
         if 'details' in func_test and func_test['details']:
             if 'tests' in func_test['details']:
-                eitem['tests'] = func_test['details']['tests']
+                if isinstance(func_test['details']['tests'], int):
+                    # Only propagate tests if it is a number
+                    eitem['tests'] = func_test['details']['tests']
             if 'failures' in func_test['details']:
                 eitem['failures'] = func_test['details']['failures']
             if 'duration' in func_test['details']:
@@ -83,7 +87,13 @@ class FunctestEnrich(Enrich):
 
         eitem.update(self.get_grimoire_fields(func_test['start_date'], "func_test"))
 
-        if self.prjs_map:
-            eitem.update(self.get_item_project(eitem))
+        # The project is a field already included in the raw data
+        # if self.prjs_map:
+        #     eitem.update(self.get_item_project(eitem))
+
+        # Hack to show BOOST_PROJECTS first in the donut vis
+        eitem['boost_list'] = ['all']
+        if eitem['project'] and eitem['project'].lower() in self.BOOST_PROJECTS:
+            eitem['boost_list'] += ['boosted']
 
         return eitem

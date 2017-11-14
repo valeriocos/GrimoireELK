@@ -91,15 +91,20 @@ class GitEnrich(Enrich):
 
     def get_elastic_mappings(self):
 
+        fielddata = ''
+        if self.kibiter_version == '5':
+            fielddata = ', "fielddata": true'
+
         mapping = """
         {
             "properties": {
                "message_analyzed": {
                   "type": "string",
                   "index":"analyzed"
+                  %s
                }
            }
-        }"""
+        }""" % fielddata
 
         return {"items":mapping}
 

@@ -87,6 +87,10 @@ class AskbotEnrich(Enrich):
 
     def get_elastic_mappings(self):
 
+        fielddata = ''
+        if self.kibiter_version == '5':
+            fielddata = ', "fielddata": true'
+
         mapping = """
         {
             "properties": {
@@ -100,6 +104,7 @@ class AskbotEnrich(Enrich):
                 }
            }
         } """
+
         return {"items":mapping}
 
     @metadata

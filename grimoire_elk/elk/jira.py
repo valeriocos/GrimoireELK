@@ -99,7 +99,9 @@ class JiraEnrich(Enrich):
 
         item = item['data']
 
-        for field in ["assignee","reporter","creator"]:
+        for field in ["assignee", "reporter", "creator"]:
+            if field not in item["fields"]:
+                continue
             if item["fields"][field]:
                 identities.append(self.get_sh_identity(item["fields"][field]))
 
@@ -119,7 +121,7 @@ class JiraEnrich(Enrich):
         issue = item['data']
 
         # Fields that are the same in item and eitem
-        copy_fields = ["assigned_to","reporter"]
+        copy_fields = ["assigned_to", "reporter"]
         for f in copy_fields:
             if f in issue:
                 eitem[f] = issue[f]
@@ -158,12 +160,13 @@ class JiraEnrich(Enrich):
             eitem['priority'] = issue['fields']['priority']['name']
 
         # data.fields.progress.percent not exists in Puppet JIRA
-        eitem['progress_total'] = issue['fields']['progress']['total']
+        if 'progress'in issue['fields']:
+            eitem['progress_total'] = issue['fields']['progress']['total']
         eitem['project_id'] = issue['fields']['project']['id']
         eitem['project_key'] = issue['fields']['project']['key']
         eitem['project_name'] = issue['fields']['project']['name']
 
-        if issue['fields']['reporter'] and 'reporter' in issue['fields']:
+        if 'reporter' in issue['fields'] and issue['fields']['reporter']:
             eitem['reporter_name'] = issue['fields']['reporter']['displayName']
             eitem['reporter_email'] = None
             if "emailAddress" in issue["fields"]["reporter"]:
@@ -181,15 +184,18 @@ class JiraEnrich(Enrich):
         eitem['status_description'] = issue['fields']['status']['description']
         eitem['status'] = issue['fields']['status']['name']
         eitem['summary'] = issue['fields']['summary']
-        eitem['original_time_estimation'] = issue['fields']['timeoriginalestimate']
-        if eitem['original_time_estimation']:
-            eitem['original_time_estimation_hours'] =  int(eitem['original_time_estimation'])/3600
-        eitem['time_spent'] = issue['fields']['timespent']
-        if eitem['time_spent']:
-            eitem['time_spent_hours'] = int(eitem['time_spent'])/3600
-        eitem['time_estimation'] = issue['fields']['timeestimate']
-        if eitem['time_estimation']:
-            eitem['time_estimation_hours'] = int(eitem['time_estimation'])/3600
+        if 'timeoriginalestimate' in issue['fields']:
+            eitem['original_time_estimation'] = issue['fields']['timeoriginalestimate']
+            if eitem['original_time_estimation']:
+                eitem['original_time_estimation_hours'] = int(eitem['original_time_estimation'])/3600
+        if 'timespent' in issue['fields']:
+            eitem['time_spent'] = issue['fields']['timespent']
+            if eitem['time_spent']:
+                eitem['time_spent_hours'] = int(eitem['time_spent'])/3600
+        if 'timeestimate' in issue['fields']:
+            eitem['time_estimation'] = issue['fields']['timeestimate']
+            if eitem['time_estimation']:
+                eitem['time_estimation_hours'] = int(eitem['time_estimation'])/3600
         eitem['watchers'] = issue['fields']['watches']['watchCount']
         eitem['key'] = issue['key']
 
@@ -205,6 +211,18 @@ class JiraEnrich(Enrich):
             get_time_diff_days(issue['fields']['created'], issue['fields']['updated'])
         eitem['time_to_last_update_days'] = \
             get_time_diff_days(issue['fields']['created'], datetime.utcnow())
+
+        for field in issue['fields']:
+            if field.startswith('customfield_'):
+                if type(issue['fields'][field]) is dict:
+                    if 'name' in issue['fields'][field]:
+                        if issue['fields'][field]['name'] == "Story Points":
+                            eitem['story_points'] = issue['fields'][field]['value']
+                        elif issue['fields'][field]['name'] == "Sprint":
+                            value = issue['fields'][field]['value']
+                            if value:
+                                sprint = value[0].partition(",name=")[2].split(',')[0]
+                                eitem['sprint'] = sprint
 
         if self.sortinghat:
             eitem.update(self.get_item_sh(item, self.roles))

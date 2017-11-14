@@ -40,15 +40,20 @@ class TelegramEnrich(Enrich):
 
     def get_elastic_mappings(self):
 
+        fielddata = ''
+        if self.kibiter_version == '5':
+            fielddata = ', "fielddata": true'
+
         mapping = """
         {
             "properties": {
                 "text_analyzed": {
                   "type": "string",
                   "index":"analyzed"
+                  %s
                   }
            }
-        } """
+        } """ % (fielddata)
 
         return {"items":mapping}
 

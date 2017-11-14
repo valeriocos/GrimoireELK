@@ -29,6 +29,8 @@ import logging
 import subprocess
 import sys
 
+import requests
+
 from datetime import datetime as dt
 from os import path
 
@@ -38,12 +40,12 @@ from functools import lru_cache
 from ..elastic_items import ElasticItems
 
 from .utils import grimoire_con
-
+from .. import __version__
 
 logger = logging.getLogger(__name__)
 
 try:
-    import MySQLdb
+    import pymysql
     MYSQL_LIBS = True
 except ImportError:
     logger.info("MySQL not available")
@@ -89,6 +91,7 @@ def metadata(func):
 class Enrich(ElasticItems):
 
     sh_db = None
+    kibiter_version = None
     RAW_FIELDS_COPY = ["metadata__updated_on", "metadata__timestamp",
                        "ocean-unique-id", "offset", "origin", "tag", "uuid"]
 
@@ -137,14 +140,7 @@ class Enrich(ElasticItems):
         self.type_name = "items"  # type inside the index to store items enriched
 
         # To add the gelk version to enriched items
-        try:
-            # gelk is executed directly from a git clone
-            git_path = path.dirname(__file__)
-            self.gelk_version = subprocess.check_output(["git", "-C", git_path, "describe"]).strip()
-            self.gelk_version = self.gelk_version.decode("utf-8")
-        except subprocess.CalledProcessError:
-            logger.warning("Can't get the gelk version. %s", __file__)
-            self.gelk_version = 'Unknown'
+        self.gelk_version = __version__
 
         # params used to configure the backend
         # in perceval backends managed directly inside the backend
@@ -152,6 +148,45 @@ class Enrich(ElasticItems):
         self.backend_params = None
         # Label used during enrichment for identities without a known affiliation
         self.unaffiliated_group = 'Unknown'
+
+
+    def __get_kibiter_version(self):
+        """
+            Return kibiter major number version
+
+            The url must point to the Elasticsearch used by Kibiter
+        """
+
+        url = self.elastic_url
+        config_url = '.kibana/config/_search'
+        major_version = None
+        # Avoid having // in the URL because ES will fail
+        if url[-1] != '/':
+            url += "/"
+        url += config_url
+
+        try:
+            r = grimoire_con(insecure=True).get(url)
+            r.raise_for_status()
+            if not r.json()['hits']['hits']:
+                logger.warning("Can not find Kibiter version")
+            else:
+                version = r.json()['hits']['hits'][0]['_id']
+                # 5.4.0-SNAPSHOT
+                major_version = version.split(".", 1)[0]
+        except requests.exceptions.HTTPError:
+            logger.warning("Can not find Kibiter version")
+
+        kibiter_version = major_version
+
+        return kibiter_version
+
+    def set_elastic_url(self, url):
+        """ Elastic URL """
+        self.elastic_url = url
+        # Once we have the elastic endpoint we can get the kibiter version
+        if self.kibiter_version is None:
+            self.kibiter_version = self.__get_kibiter_version()
 
     def set_elastic(self, elastic):
         self.elastic = elastic
@@ -264,7 +299,7 @@ class Enrich(ElasticItems):
         # Read the repo to project mapping from a database
         ds_repo_to_prj = {}
 
-        db = MySQLdb.connect(user=db_user, passwd=db_password, host=db_host,
+        db = pymysql.connect(user=db_user, passwd=db_password, host=db_host,
                              db=db_projects_map)
         cursor = db.cursor()
 
@@ -285,9 +320,6 @@ class Enrich(ElasticItems):
         else:
             raise RuntimeError("Can't find projects mapping in %s" % (db_projects_map))
         return ds_repo_to_prj
-
-    def set_elastic(self, elastic):
-        self.elastic = elastic
 
     def get_field_unique_id(self):
         """ Field in the raw item with the unique id """
@@ -590,39 +622,31 @@ class Enrich(ElasticItems):
     def get_item_sh_fields(self, identity=None, item_date=None, sh_id=None,
                            rol='author'):
         """ Get standard SH fields from a SH identity """
-        eitem_sh = {}  # Item enriched
+        eitem_sh = self.__get_item_sh_fields_empty(rol)
 
         if identity:
             # Use the identity to get the SortingHat identity
             sh_ids = self.get_sh_ids(identity, self.get_connector_name())
             eitem_sh[rol+"_id"] = sh_ids['id']
             eitem_sh[rol+"_uuid"] = sh_ids['uuid']
+            eitem_sh[rol+"_name"] = identity['name']
+            eitem_sh[rol+"_user_name"] = identity['username']
+            eitem_sh[rol+"_domain"] = self.get_identity_domain(identity)
         elif sh_id:
             # Use the SortingHat id to get the identity
             eitem_sh[rol+"_id"] = sh_id
             eitem_sh[rol+"_uuid"] = self.get_uuid_from_id(sh_id)
         else:
             # No data to get a SH identity. Return an empty one.
-            return self.__get_item_sh_fields_empty(rol)
+            return eitem_sh
 
         # Get the SH profile to use first this data
         profile = self.get_profile_sh(eitem_sh[rol+"_uuid"])
 
         if profile:
             eitem_sh[rol+"_name"] = profile['name']
-            # username is not included in SH profile
-            eitem_sh[rol+"_user_name"] = None
-            if identity:
-                eitem_sh[rol+"_user_name"] = identity['username']
-            eitem_sh[rol+"_domain"] = self.get_identity_domain(profile)
         elif not profile and sh_id:
-            logger.warning("Can't find SH identity: %s", sh_id)
-            return {}
-        else:
-            # Just use directly the data in the identity
-            eitem_sh[rol+"_name"] = identity['name']
-            eitem_sh[rol+"_user_name"] = identity['username']
-            eitem_sh[rol+"_domain"] = self.get_identity_domain(identity)
+            logger.warning("Can't find SH identity profile: %s", sh_id)
 
         eitem_sh[rol+"_org_name"] = self.get_enrollment(eitem_sh[rol+"_uuid"], item_date)
         eitem_sh[rol+"_bot"] = self.is_bot(eitem_sh[rol+'_uuid'])

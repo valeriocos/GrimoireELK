@@ -56,6 +56,10 @@ class PhabricatorEnrich(Enrich):
 
     def get_elastic_mappings(self):
 
+        fielddata = ''
+        if self.kibiter_version == '5':
+            fielddata = ', "fielddata": true'
+
         mapping = """
         {
             "properties": {
@@ -63,16 +67,17 @@ class PhabricatorEnrich(Enrich):
                   "type": "string",
                   "index":"analyzed"
                 },
-                "assigned_to_roles_analyzed": {
-                  "type": "string",
-                  "index":"analyzed"
+                "assigned_to_roles": {
+                  "type": "string"
+                  %s
                  },
                 "tags_analyzed": {
                    "type": "string",
                    "index":"analyzed"
+                   %s
                  }
            }
-        } """
+        } """ % (fielddata, fielddata)
 
         return {"items":mapping}
 

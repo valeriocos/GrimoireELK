@@ -43,22 +43,15 @@ class StackExchangeEnrich(Enrich):
 
     def get_elastic_mappings(self):
 
-        from grimoire_elk.utils import kibiter_version
-
-        fielddata = ''
-        if kibiter_version == '5':
-            fielddata = ', "fielddata": true'
-
         mapping = """
         {
             "properties": {
                 "title_analyzed": {
                   "type": "string",
                   "index":"analyzed"
-                  %s
                 }
            }
-        } """  % fielddata
+        } """
 
         return {"items":mapping}
 
@@ -142,6 +135,7 @@ class StackExchangeEnrich(Enrich):
             map_fields = {"title": "question_title"}
             for fn in map_fields:
                 eitem[map_fields[fn]] = question[fn]
+            eitem['title_analyzed'] = question['title']
 
             creation_date = unixtime_to_datetime(question["creation_date"]).isoformat()
             eitem['creation_date'] = creation_date

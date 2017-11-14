@@ -114,12 +114,12 @@ class ElasticSearch(object):
             if current >= self.max_items_bulk:
                 task_init = time()
                 self._safe_put_bulk(url, bulk_json)
-                bulk_json = ""
                 new_items += current
                 current = 0
                 json_size = sys.getsizeof(bulk_json) / (1024*1024)
                 logger.debug("bulk packet sent (%.2f sec, %i total, %.2f MB)"
                               % (time()-task_init, new_items, json_size))
+                bulk_json = ""
             data_json = json.dumps(item)
             bulk_json += '{"index" : {"_id" : "%s" } }\n' % (item[field_id])
             bulk_json += data_json +"\n"  # Bulk document
@@ -141,6 +141,8 @@ class ElasticSearch(object):
         # This method waits until the upload is visible in searches
 
         r = self.requests.get(self.index_url+'/_search?size=1')
+        if 'hits' not in r.json():
+            logging.error('Can get the number of already existing items in ES: %s', r.json())
         total = r.json()['hits']['total']  # Already existing items
         new_items = self.bulk_upload(items, field_id)
         if not sync:

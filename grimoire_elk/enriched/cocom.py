@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 
 class CocomEnrich(Enrich):
 
+    def __init__(self, db_sortinghat=None, db_projects_map=None, json_projects_map=None,
+                 db_user='', db_password='', db_host=''):
+        super().__init__(db_sortinghat, db_projects_map, json_projects_map,
+                         db_user, db_password, db_host)
+
+        self.studies = []
+        self.studies.append(self.enrich_repo_analysis)
+
     def get_identities(self, item):
         """ Return the identities from an item """
         identities = []
@@ -131,6 +139,13 @@ class CocomEnrich(Enrich):
             logger.info("%s items inserted for Cocom", str(num_items))
 
         return num_items
+
+    def enrich_repo_analysis(self, ocean_backend, enrich_backend, no_incremental=False,
+                             out_index='cocom_repo_analysis',
+                             date_field="grimoire_creation_date"):
+
+        for item in enrich_backend.fetch():
+            print("here")
 
     def __fix_field_date(self, date_value):
         """Fix possible errors in the field date"""

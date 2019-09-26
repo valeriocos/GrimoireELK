@@ -68,6 +68,7 @@ UNKNOWN_PROJECT = 'unknown'
 DEFAULT_PROJECT = 'Main'
 DEFAULT_DB_USER = 'root'
 CUSTOM_META_PREFIX = 'cm'
+EXTRA_PREFIX = 'extra'
 
 SH_UNKNOWN_VALUE = 'Unknown'
 DEMOGRAPHICS_ALIAS = 'demographics'
@@ -984,6 +985,96 @@ class Enrich(ElasticItems):
             out_conn.create_alias(ONION_ALIAS)
 
         logger.info(log_prefix + " This is the end.")
+
+    def enrich_external_data(self, ocean_backend, enrich_backend, json_url, target_index=None):
+        """xxx"""
+
+        index_url = "{}/{}".format(enrich_backend.elastic_url,
+                                   target_index) if target_index else enrich_backend.elastic.index_url
+
+        if target_index:
+            url = "{}/{}/_update_by_query?wait_for_completion=true&conflicts=proceed".format(index_url)
+        else:
+            url = "{}/_update_by_query?wait_for_completion=true&conflicts=proceed".format(index_url)
+
+        res = self.requests.get(index_url)
+        if res.status_code != 200:
+            logger.error("[external-data] Target index %s doesn't exists, "
+                         "enrich_modify_data finished", self.elastic.anonymize_url(url))
+            return
+
+        res = self.requests.get(json_url)
+        res.raise_for_status()
+        extras = res.json()
+
+        for extra in extras:
+            filters = []
+            stmts = []
+
+            # create filter
+            target = extra.get('query_fields', [])
+            for t in target:
+                t_field = t['field']
+                t_value = t['value']
+                fltr = {
+                    "term": {
+                        t_field: t_value
+                    }
+                }
+                filters.append(fltr)
+
+            # populate painless, add/modify statements
+            set_fields = extra.get('set_extra_fields', [])
+            for f in set_fields:
+                e_field = "{}_{}".format(EXTRA_PREFIX, f['field'])
+                e_value = f['value']
+
+                if isinstance(e_value, int) or isinstance(e_value, float):
+                    stmt = "ctx._source.{} = {}".format(e_field, e_value)
+                else:
+                    stmt = "ctx._source.{} = '{}'".format(e_field, e_value)
+                stmts.append(stmt)
+
+            # populate painless, remove statements
+            remove_fields = extra.get('remove_extra_fields', [])
+            for f in remove_fields:
+                e_field = "{}_{}".format(EXTRA_PREFIX, f['field'])
+
+                stmt = "ctx._source.remove('{}')".format(e_field)
+
+                stmts.append(stmt)
+
+            es_query = '''
+                    {
+                      "script": {
+                        "source":
+                        "%s",
+                        "lang": "painless"
+                      },
+                      "query": {
+                        "bool": {
+                          "must": %s
+                        }
+                      }
+                    }
+                    ''' % (";".join(stmts), json.dumps(filters))
+
+            try:
+                r = self.requests.post(url, data=es_query, headers=HEADER_JSON, verify=False)
+            except requests.exceptions.RetryError:
+                logger.warning("[external-data] Retry exceeded while executing external_data. "
+                               "The following query is skipped %s.", es_query)
+                continue
+
+            try:
+                r.raise_for_status()
+            except requests.exceptions.HTTPError as ex:
+                logger.error("[external-data] Error while executing external_data. Study aborted.")
+                logger.error(ex)
+                return
+
+            logger.info("[external-data] Target index %s "
+                        "updated with data from %s", self.elastic.anonymize_url(url), json_url)
 
     def enrich_demography(self, ocean_backend, enrich_backend, date_field="grimoire_creation_date",
                           author_field="author_uuid"):
